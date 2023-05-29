@@ -1,7 +1,13 @@
 # Problemas de Programação Distribuída
 
-## Rodando
+## Rodando o cliente
 
 ```bash
 go run ./ex
+```
+
+## Rodando o servidor
+
+```bash
+go run ./ex --server [--concurrent]
 ```
