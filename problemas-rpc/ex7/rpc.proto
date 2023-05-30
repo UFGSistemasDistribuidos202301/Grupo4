@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+option go_package = "github.com/UFGSistemasDistribuidos202301/Grupo4/problemas-rpc/ex7/server/pb";
+
+package aposentadoria;
+
+service Aposentadoria {
+  rpc PodeAposentar (PodeAposentarRequest) returns (PodeAposentarReply) {}
+}
+
+message PodeAposentarRequest {
+  uint32 idade = 1;
+  uint32 tempoServico = 2;
+}
+
+message PodeAposentarReply {
+  bool podeAposentar = 1;
+}
