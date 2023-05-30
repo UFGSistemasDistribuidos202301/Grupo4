@@ -46,7 +46,7 @@ func serverHandleConn(conn net.Conn, id uint) {
 
 		encoder := gob.NewEncoder(conn)
 		if err := encoder.Encode(&Resp{
-			PodeAposentar: req.Idade >= 65 && req.TempoServico >= 30 && (req.Idade >= 60 && req.TempoServico >= 25),
+			PodeAposentar: req.Idade >= 65 || req.TempoServico >= 30 || (req.Idade >= 60 && req.TempoServico >= 25),
 		}); err != nil {
 			log.Printf("Erro escrevendo resposta: %v", err)
 			return
