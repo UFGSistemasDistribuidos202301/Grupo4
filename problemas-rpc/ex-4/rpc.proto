@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+option go_package = "github.com/UFGSistemasDistribuidos202301/Grupo4/problemas-rpc/ex-4/server/pb";
+
+package pesoideal;
+
+service PesoIdeal {
+  rpc CalculaPesoIdeal (PesoIdealRequest) returns (PesoIdealReply) {}
+}
+
+message PesoIdealRequest {
+  string sexo = 1;
+  float altura = 2;
+}
+
+message PesoIdealReply {
+  float pesoIdeal = 1;
+}

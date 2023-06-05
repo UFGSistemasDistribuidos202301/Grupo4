@@ -1,3 +1,5 @@
+github.com/UFGSistemasDistribuidos202301/Grupo4/problemas-rpc/ex7/server v0.0.0-20230604224324-a2998f457504 h1:ZFtReBdXyqFsCXeEmSl2xHnjIyU6StM7OoYFAUQyJY0=
+github.com/UFGSistemasDistribuidos202301/Grupo4/problemas-rpc/ex7/server v0.0.0-20230604224324-a2998f457504/go.mod h1:F9NHNmHiUBw6XlBfVIpweZobp1oE6ogxGWAirb2y2fg=
 github.com/golang/protobuf v1.5.0/go.mod h1:FsONVRAS9T7sI+LIUmWTfcYkHO4aIWwzhcaSAoJOfIk=
 github.com/golang/protobuf v1.5.3 h1:KhyjKVUg7Usr/dYsdSqoFveMYd5ko72D+zANwlG1mmg=
 github.com/golang/protobuf v1.5.3/go.mod h1:XVQd3VNwM+JqD3oG2Ue2ip4fOMUkwXdXDdiuN0vRsmY=
