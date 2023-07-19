@@ -31,7 +31,7 @@ e com base no uso, o usuário pode escolher qual prefere utilizar.
 3. Decisão sobre os métodos de consistência (TODOS) 
 4. Elaboração de um esquema arquitetural de comunicação e dados. (TODOS) 
 5. Codificação de um banco de dados replicado (Felipe Aguiar, Ben Hur)
-6. Codificação do protocolo CRDT (Felipe Aguiar, Ben Hur)
+6. Codificação do protocolo CRDT (Felipe Aguiar)
 7. Codificação do protocolo RAFT (Filipe Chaves, João Paulo)
 8. Codificação de um visualizador dos estados dos nós (Thiago, Ben Hur)
 9. Codificação do agregador final dos protocolos e banco de dados replicado 
