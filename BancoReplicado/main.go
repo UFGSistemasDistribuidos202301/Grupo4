@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 
@@ -360,5 +361,7 @@ func main() {
 		}
 	})
 
+	log.SetPrefix(fmt.Sprintf("[NODE #%d] ", *nodeID))
+	log.Printf("Launching node #%d", *nodeID)
 	http.ListenAndServe(fmt.Sprintf(":%d", *baseHTTPPort), r)
 }

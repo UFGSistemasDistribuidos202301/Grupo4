@@ -20,6 +20,11 @@ func getRootDir() string {
 }
 
 func loadTables() error {
+	err := os.MkdirAll(getRootDir(), 0755)
+	if err != nil {
+		return err
+	}
+
 	files, err := ioutil.ReadDir(getRootDir())
 	if err != nil {
 		return err
