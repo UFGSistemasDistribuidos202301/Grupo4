@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"net/http"
 	"os"
@@ -9,9 +11,27 @@ import (
 	"github.com/dgraph-io/badger/v4"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/gorilla/websocket"
+)
+
+type VisEvent struct {
+	NodeID uint   `json:"node_id"`
+	Kind   string `json:"kind"`
+	Data   any    `json:"data"`
+}
+
+var (
+	upgrader         = websocket.Upgrader{} // use default options
+	visEventsChannel = make(chan VisEvent)
+
+	nodeID       = flag.Uint("id", 0, "The ID of this node")
+	baseHTTPPort = flag.Uint("baseHTTPPort", 3000, "The base HTTP port")
 )
 
 func main() {
+	flag.Parse()
+	*baseHTTPPort += *nodeID
+
 	if err := loadTables(); err != nil {
 		panic(err)
 	}
@@ -35,6 +55,13 @@ func main() {
 			writeError(w, "could not create table: "+err.Error())
 			return
 		}
+
+		// Send event
+		visEventsChannel <- VisEvent{
+			NodeID: *nodeID,
+			Kind:   "create_table",
+			Data:   tableName,
+		}
 	})
 
 	// DELETE /<table>
@@ -50,7 +77,14 @@ func main() {
 		table.Close()
 		delete(tables, tableName)
 
-		tablePath := fmt.Sprintf("%s/%s", rootDir, tableName)
+		// Send event
+		visEventsChannel <- VisEvent{
+			NodeID: *nodeID,
+			Kind:   "delete_table",
+			Data:   tableName,
+		}
+
+		tablePath := fmt.Sprintf("%s/%s", getRootDir(), tableName)
 		err = os.RemoveAll(tablePath)
 		if err != nil {
 			writeError(w, "error deleting table")
@@ -116,6 +150,13 @@ func main() {
 				return err
 			}
 
+			// Send event
+			visEventsChannel <- VisEvent{
+				NodeID: *nodeID,
+				Kind:   "put_document",
+				Data:   map[string]any{docId: bodyMap},
+			}
+
 			return nil
 		})
 
@@ -165,6 +206,13 @@ func main() {
 				return err
 			}
 
+			// Send event
+			visEventsChannel <- VisEvent{
+				NodeID: *nodeID,
+				Kind:   "patch_document",
+				Data:   map[string]any{docId: itemMap},
+			}
+
 			return nil
 		})
 
@@ -203,10 +251,16 @@ func main() {
 
 			return nil
 		})
-
 		if err != nil {
 			writeError(w, "document does not exist")
 			return
+		}
+
+		// Send event
+		visEventsChannel <- VisEvent{
+			NodeID: *nodeID,
+			Kind:   "delete_document",
+			Data:   docId,
 		}
 	})
 
@@ -284,5 +338,27 @@ func main() {
 		}
 	})
 
-	http.ListenAndServe(":3000", r)
+	// Websocket endpoint
+	r.Get("/ws", func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		defer conn.Close()
+		for {
+			event := <-visEventsChannel
+			eventJson, err := json.Marshal(event)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			if err := conn.WriteMessage(1, eventJson); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+		}
+	})
+
+	http.ListenAndServe(fmt.Sprintf(":%d", *baseHTTPPort), r)
 }

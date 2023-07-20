@@ -12,19 +12,22 @@ import (
 )
 
 var (
-	rootDir string                = "./db"
 	tables  map[string]*badger.DB = make(map[string]*badger.DB)
 )
 
+func getRootDir() string {
+	return fmt.Sprintf("./node_%d", *nodeID)
+}
+
 func loadTables() error {
-	files, err := ioutil.ReadDir(rootDir)
+	files, err := ioutil.ReadDir(getRootDir())
 	if err != nil {
 		return err
 	}
 
 	for _, file := range files {
 		tableName := file.Name()
-		db, err := badger.Open(badger.DefaultOptions(rootDir + "/" + tableName))
+		db, err := badger.Open(badger.DefaultOptions(getRootDir() + "/" + tableName))
 		if err != nil {
 			return err
 		}
@@ -35,7 +38,7 @@ func loadTables() error {
 }
 
 func getTable(name string, create bool) (*badger.DB, error) {
-	dbPath := fmt.Sprintf("%s/%s", rootDir, name)
+	dbPath := fmt.Sprintf("%s/%s", getRootDir(), name)
 	_, err := os.Stat(dbPath)
 	dirExists := err == nil
 	if !create && !dirExists {
