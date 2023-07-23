@@ -5,61 +5,26 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
-	"os"
 
-	"github.com/dgraph-io/badger/v4"
+	bolt "go.etcd.io/bbolt"
 )
 
 var (
-	tables  map[string]*badger.DB = make(map[string]*badger.DB)
+	DB *bolt.DB
 )
 
-func getRootDir() string {
+func getDBDir() string {
 	return fmt.Sprintf("./node_%d", *nodeID)
 }
 
-func loadTables() error {
-	err := os.MkdirAll(getRootDir(), 0755)
+func openDB() {
+	var err error
+	DB, err = bolt.Open(getDBDir(), 0600, nil)
 	if err != nil {
-		return err
+		log.Fatal(err)
 	}
-
-	files, err := ioutil.ReadDir(getRootDir())
-	if err != nil {
-		return err
-	}
-
-	for _, file := range files {
-		tableName := file.Name()
-		db, err := badger.Open(badger.DefaultOptions(getRootDir() + "/" + tableName))
-		if err != nil {
-			return err
-		}
-		tables[tableName] = db
-	}
-
-	return nil
-}
-
-func getTable(name string, create bool) (*badger.DB, error) {
-	dbPath := fmt.Sprintf("%s/%s", getRootDir(), name)
-	_, err := os.Stat(dbPath)
-	dirExists := err == nil
-	if !create && !dirExists {
-		return nil, errors.New("table does not exist")
-	}
-	db, exists := tables[name]
-	if exists {
-		return db, nil
-	}
-
-	db, err = badger.Open(badger.DefaultOptions(dbPath))
-	if err != nil {
-		return nil, err
-	}
-	tables[name] = db
-	return db, nil
 }
 
 func writeError(w http.ResponseWriter, msg string) {
@@ -70,71 +35,74 @@ func writeError(w http.ResponseWriter, msg string) {
 	errObj := Error{Message: msg}
 	errBytes, err := json.Marshal(errObj)
 	if err != nil {
-		panic(err)
+		log.Panic(err)
 	}
 
 	w.WriteHeader(500)
 	w.Write(errBytes)
 }
 
-func writeBodyJson(w http.ResponseWriter, bodyJson any) error {
+func writeBodyJson(w http.ResponseWriter, bodyJson any) {
 	bodyBytes, err := json.Marshal(bodyJson)
 	if err != nil {
-		return err
+		log.Panic(err)
 	}
 	_, err = w.Write(bodyBytes)
 	if err != nil {
-		return err
+		log.Panic(err)
 	}
-
-	return nil
 }
 
-func getBodyMap(r *http.Request) (map[string]string, error) {
+func getBodyMap(r *http.Request) map[string]string {
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		return nil, errors.New("error reading request body")
+		log.Panic(err)
 	}
 
 	var bodyMap map[string]string
 	err = json.Unmarshal(body, &bodyMap)
 	if err != nil {
-		return nil, errors.New("error parsing request body")
+		log.Panic(err)
 	}
 
-	return bodyMap, nil
+	return bodyMap
 }
 
-func getItem(txn *badger.Txn, docId string) (map[string]string, error) {
-	item, err := txn.Get([]byte(docId))
-	if err != nil {
-		return nil, err
+func getItem(txn *bolt.Tx, tableName string, docId string) map[string]string {
+	bucket := txn.Bucket([]byte(tableName))
+	if bucket == nil {
+		return nil
 	}
-
-	itemBytes, err := item.ValueCopy(nil)
-	if err != nil {
-		return nil, err
+	item := bucket.Get([]byte(docId))
+	if item == nil {
+		return nil
 	}
 
 	var itemMap map[string]string
-	err = json.Unmarshal(itemBytes, &itemMap)
+	err := json.Unmarshal(item, &itemMap)
 	if err != nil {
-		return nil, errors.New("error parsing item json")
+		log.Panic(err)
 	}
 
-	return itemMap, nil
+	return itemMap
 }
 
 func setItem(
-	txn *badger.Txn,
+	txn *bolt.Tx,
+	tableName string,
 	docId string,
 	itemMap map[string]string,
 ) error {
+	bucket := txn.Bucket([]byte(tableName))
+	if bucket == nil {
+		return errors.New("table does not exist")
+	}
+
 	value, err := json.Marshal(itemMap)
 	if err != nil {
 		return err
 	}
-	err = txn.Set([]byte(docId), value)
+	err = bucket.Put([]byte(docId), value)
 	if err != nil {
 		return err
 	}

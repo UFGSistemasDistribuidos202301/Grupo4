@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 
-	"github.com/dgraph-io/badger/v4"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/gorilla/websocket"
+
+	bolt "go.etcd.io/bbolt"
 )
 
 type VisEvent struct {
@@ -23,7 +23,7 @@ type VisEvent struct {
 
 var (
 	upgrader         = websocket.Upgrader{} // use default options
-	visEventsChannel = make(chan VisEvent)
+	visEventsChannel = make(chan VisEvent, 2048)
 
 	nodeID       = flag.Uint("id", 0, "The ID of this node")
 	baseHTTPPort = flag.Uint("baseHTTPPort", 3000, "The base HTTP port")
@@ -33,9 +33,7 @@ func main() {
 	flag.Parse()
 	*baseHTTPPort += *nodeID
 
-	if err := loadTables(); err != nil {
-		panic(err)
-	}
+	openDB()
 
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
@@ -45,13 +43,18 @@ func main() {
 	// Cria uma tabela (indicando se será eventual ou forte)
 	r.Put("/{tableName}", func(w http.ResponseWriter, r *http.Request) {
 		tableName := chi.URLParam(r, "tableName")
-		_, err := getTable(tableName, false)
-		if err == nil {
-			writeError(w, "table already exists")
-			return
-		}
 
-		_, err = getTable(tableName, true)
+		err := DB.Update(func(tx *bolt.Tx) error {
+			existingBucket := tx.Bucket([]byte(tableName))
+			if existingBucket != nil {
+				return errors.New("table already exists")
+			}
+
+			if _, err := tx.CreateBucket([]byte(tableName)); err != nil {
+				return err
+			}
+			return nil
+		})
 		if err != nil {
 			writeError(w, "could not create table: "+err.Error())
 			return
@@ -69,27 +72,29 @@ func main() {
 	// Remove uma tabela
 	r.Delete("/{tableName}", func(w http.ResponseWriter, r *http.Request) {
 		tableName := chi.URLParam(r, "tableName")
-		table, err := getTable(tableName, false)
+
+		err := DB.Update(func(tx *bolt.Tx) error {
+			existingBucket := tx.Bucket([]byte(tableName))
+			if existingBucket == nil {
+				return errors.New("table does not exist")
+			}
+
+			err := tx.DeleteBucket([]byte(tableName))
+			if err != nil {
+				return err
+			}
+			return nil
+		})
 		if err != nil {
-			writeError(w, "table does not exist")
+			writeError(w, "could not create table: "+err.Error())
 			return
 		}
-
-		table.Close()
-		delete(tables, tableName)
 
 		// Send event
 		visEventsChannel <- VisEvent{
 			NodeID: *nodeID,
 			Kind:   "delete_table",
 			Data:   tableName,
-		}
-
-		tablePath := fmt.Sprintf("%s/%s", getRootDir(), tableName)
-		err = os.RemoveAll(tablePath)
-		if err != nil {
-			writeError(w, "error deleting table")
-			return
 		}
 	})
 
@@ -98,21 +103,13 @@ func main() {
 	r.Get("/{tableName}/{docId}", func(w http.ResponseWriter, r *http.Request) {
 		tableName := chi.URLParam(r, "tableName")
 		docId := chi.URLParam(r, "docId")
-		table, err := getTable(tableName, false)
-		if err != nil {
-			writeError(w, "table does not exist")
-			return
-		}
 
-		err = table.View(func(txn *badger.Txn) error {
-			itemMap, err := getItem(txn, docId)
-			if err != nil {
-				return err
+		err := DB.View(func(txn *bolt.Tx) error {
+			itemMap := getItem(txn, tableName, docId)
+			if itemMap == nil {
+				return errors.New("document does not exist")
 			}
-			err = writeBodyJson(w, itemMap)
-			if err != nil {
-				return err
-			}
+			writeBodyJson(w, itemMap)
 
 			return nil
 		})
@@ -129,27 +126,14 @@ func main() {
 	r.Put("/{tableName}/{docId}", func(w http.ResponseWriter, r *http.Request) {
 		tableName := chi.URLParam(r, "tableName")
 		docId := chi.URLParam(r, "docId")
-		table, err := getTable(tableName, false)
-		if err != nil {
-			writeError(w, "table does not exist")
-			return
-		}
 
-		err = table.Update(func(txn *badger.Txn) error {
-			bodyMap, err := getBodyMap(r)
-			if err != nil {
+		err := DB.Update(func(txn *bolt.Tx) error {
+			bodyMap := getBodyMap(r)
+			if err := setItem(txn, tableName, docId, bodyMap); err != nil {
 				return err
 			}
 
-			err = setItem(txn, docId, bodyMap)
-			if err != nil {
-				return err
-			}
-
-			err = writeBodyJson(w, bodyMap)
-			if err != nil {
-				return err
-			}
+			writeBodyJson(w, bodyMap)
 
 			// Send event
 			visEventsChannel <- VisEvent{
@@ -176,36 +160,24 @@ func main() {
 	r.Patch("/{tableName}/{docId}", func(w http.ResponseWriter, r *http.Request) {
 		tableName := chi.URLParam(r, "tableName")
 		docId := chi.URLParam(r, "docId")
-		table, err := getTable(tableName, false)
-		if err != nil {
-			writeError(w, "table does not exist")
-			return
-		}
 
-		err = table.Update(func(txn *badger.Txn) error {
-			itemMap, err := getItem(txn, docId)
-			if err != nil {
+		err := DB.Update(func(txn *bolt.Tx) error {
+			itemMap := getItem(txn, tableName, docId)
+			if itemMap == nil {
 				itemMap = map[string]string{}
 			}
 
-			bodyMap, err := getBodyMap(r)
-			if err != nil {
-				return err
-			}
+			bodyMap := getBodyMap(r)
 
 			for k, v := range bodyMap {
 				itemMap[k] = v
 			}
 
-			err = setItem(txn, docId, itemMap)
-			if err != nil {
+			if err := setItem(txn, tableName, docId, itemMap); err != nil {
 				return err
 			}
 
-			err = writeBodyJson(w, itemMap)
-			if err != nil {
-				return err
-			}
+			writeBodyJson(w, itemMap)
 
 			// Send event
 			visEventsChannel <- VisEvent{
@@ -228,27 +200,23 @@ func main() {
 	r.Delete("/{tableName}/{docId}", func(w http.ResponseWriter, r *http.Request) {
 		tableName := chi.URLParam(r, "tableName")
 		docId := chi.URLParam(r, "docId")
-		table, err := getTable(tableName, false)
-		if err != nil {
-			writeError(w, "table does not exist")
-			return
-		}
 
-		err = table.Update(func(txn *badger.Txn) error {
-			itemMap, err := getItem(txn, docId)
-			if err != nil {
+		err := DB.Update(func(txn *bolt.Tx) error {
+			bucket := txn.Bucket([]byte(tableName))
+			if bucket == nil {
+				return errors.New("table does not exist")
+			}
+
+			itemMap := getItem(txn, tableName, docId)
+			if itemMap == nil {
 				return errors.New("document does not exist")
 			}
 
-			err = txn.Delete([]byte(docId))
-			if err != nil {
+			if err := bucket.Delete([]byte(docId)); err != nil {
 				return err
 			}
 
-			err = writeBodyJson(w, itemMap)
-			if err != nil {
-				return err
-			}
+			writeBodyJson(w, itemMap)
 
 			return nil
 		})
@@ -269,39 +237,27 @@ func main() {
 	// Retorna todos os documentos de uma tabela
 	r.Get("/{tableName}", func(w http.ResponseWriter, r *http.Request) {
 		tableName := chi.URLParam(r, "tableName")
-		table, err := getTable(tableName, false)
-		if err != nil {
-			writeError(w, "table does not exist")
-			return
-		}
 
-		err = table.View(func(txn *badger.Txn) error {
-			it := txn.NewIterator(badger.DefaultIteratorOptions)
-			defer it.Close()
+		tableValues := map[string]map[string]string{}
 
-			tableValues := map[string]map[string]string{}
-
-			for it.Rewind(); it.Valid(); it.Next() {
-				docId := string(it.Item().Key())
-				docValue, err := getItem(txn, docId)
-				if err != nil {
-					return err
-				}
+		err := DB.View(func(tx *bolt.Tx) error {
+			bucket := tx.Bucket([]byte(tableName))
+			if bucket == nil {
+				return errors.New("table does not exist")
+			}
+			return bucket.ForEach(func(key, value []byte) error {
+				docId := string(key)
+				docValue := getItem(tx, tableName, docId)
 				tableValues[docId] = docValue
-			}
-
-			err = writeBodyJson(w, tableValues)
-			if err != nil {
-				return err
-			}
-
-			return nil
+				return nil
+			})
 		})
-
 		if err != nil {
 			writeError(w, "failed to get table documents: "+err.Error())
 			return
 		}
+
+		writeBodyJson(w, tableValues)
 	})
 
 	// GET /
@@ -309,34 +265,25 @@ func main() {
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		dbValues := map[string]map[string]map[string]string{}
 
-		for tableName, table := range tables {
-			dbValues[tableName] = map[string]map[string]string{}
-			err := table.View(func(txn *badger.Txn) error {
-				it := txn.NewIterator(badger.DefaultIteratorOptions)
-				defer it.Close()
+		err := DB.View(func(tx *bolt.Tx) error {
+			return tx.ForEach(func(name []byte, bucket *bolt.Bucket) error {
+				tableName := string(name)
+				dbValues[tableName] = map[string]map[string]string{}
 
-				for it.Rewind(); it.Valid(); it.Next() {
-					docId := string(it.Item().Key())
-					docValue, err := getItem(txn, docId)
-					if err != nil {
-						return err
-					}
+				return bucket.ForEach(func(key, value []byte) error {
+					docId := string(key)
+					docValue := getItem(tx, tableName, docId)
 					dbValues[tableName][docId] = docValue
-				}
-
-				return nil
+					return nil
+				})
 			})
-
-			if err != nil {
-				writeError(w, "failed to get table documents: "+err.Error())
-				return
-			}
-		}
-
-		err := writeBodyJson(w, dbValues)
+		})
 		if err != nil {
-			writeError(w, "failed to get DB documents: "+err.Error())
+			writeError(w, "failed to get table documents: "+err.Error())
+			return
 		}
+
+		writeBodyJson(w, dbValues)
 	})
 
 	// Websocket endpoint
