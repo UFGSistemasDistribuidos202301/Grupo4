@@ -22,7 +22,8 @@ type VisEvent struct {
 
 var (
 	upgrader         = websocket.Upgrader{} // use default options
-	visEventsChannel = make(chan VisEvent, 2048)
+	wsListeners      = make(map[*websocket.Conn]chan<- VisEvent)
+	visEventsChannel = make(chan VisEvent)
 
 	nodeID       = flag.Uint("id", 0, "The ID of this node")
 	baseHTTPPort = flag.Uint("baseHTTPPort", 3000, "The base HTTP port")
@@ -33,6 +34,15 @@ func main() {
 	*baseHTTPPort += *nodeID
 
 	openDB()
+
+	// Broadcast visualization events to websocket connections
+	go func() {
+		for msg := range visEventsChannel {
+			for _, recv := range wsListeners {
+				recv <- msg
+			}
+		}
+	}()
 
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
@@ -277,8 +287,12 @@ func main() {
 			return
 		}
 		defer conn.Close()
-		for {
-			event := <-visEventsChannel
+
+		recv := make(chan VisEvent)
+		wsListeners[conn] = recv
+		defer delete(wsListeners, conn)
+
+		for event := range recv {
 			eventJson, err := json.Marshal(event)
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
