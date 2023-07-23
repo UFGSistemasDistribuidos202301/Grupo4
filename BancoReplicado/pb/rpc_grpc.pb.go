@@ -19,14 +19,14 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Database_RecvCRDTStates_FullMethodName = "/banco_de_dados.Database/RecvCRDTStates"
+	Database_MergeCRDTStates_FullMethodName = "/banco_de_dados.Database/MergeCRDTStates"
 )
 
 // DatabaseClient is the client API for Database service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type DatabaseClient interface {
-	RecvCRDTStates(ctx context.Context, in *RecvCRDTStatesRequest, opts ...grpc.CallOption) (*RecvCRDTStatesReply, error)
+	MergeCRDTStates(ctx context.Context, in *MergeCRDTStatesRequest, opts ...grpc.CallOption) (*MergeCRDTStatesReply, error)
 }
 
 type databaseClient struct {
@@ -37,9 +37,9 @@ func NewDatabaseClient(cc grpc.ClientConnInterface) DatabaseClient {
 	return &databaseClient{cc}
 }
 
-func (c *databaseClient) RecvCRDTStates(ctx context.Context, in *RecvCRDTStatesRequest, opts ...grpc.CallOption) (*RecvCRDTStatesReply, error) {
-	out := new(RecvCRDTStatesReply)
-	err := c.cc.Invoke(ctx, Database_RecvCRDTStates_FullMethodName, in, out, opts...)
+func (c *databaseClient) MergeCRDTStates(ctx context.Context, in *MergeCRDTStatesRequest, opts ...grpc.CallOption) (*MergeCRDTStatesReply, error) {
+	out := new(MergeCRDTStatesReply)
+	err := c.cc.Invoke(ctx, Database_MergeCRDTStates_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +50,7 @@ func (c *databaseClient) RecvCRDTStates(ctx context.Context, in *RecvCRDTStatesR
 // All implementations must embed UnimplementedDatabaseServer
 // for forward compatibility
 type DatabaseServer interface {
-	RecvCRDTStates(context.Context, *RecvCRDTStatesRequest) (*RecvCRDTStatesReply, error)
+	MergeCRDTStates(context.Context, *MergeCRDTStatesRequest) (*MergeCRDTStatesReply, error)
 	mustEmbedUnimplementedDatabaseServer()
 }
 
@@ -58,8 +58,8 @@ type DatabaseServer interface {
 type UnimplementedDatabaseServer struct {
 }
 
-func (UnimplementedDatabaseServer) RecvCRDTStates(context.Context, *RecvCRDTStatesRequest) (*RecvCRDTStatesReply, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method RecvCRDTStates not implemented")
+func (UnimplementedDatabaseServer) MergeCRDTStates(context.Context, *MergeCRDTStatesRequest) (*MergeCRDTStatesReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method MergeCRDTStates not implemented")
 }
 func (UnimplementedDatabaseServer) mustEmbedUnimplementedDatabaseServer() {}
 
@@ -74,20 +74,20 @@ func RegisterDatabaseServer(s grpc.ServiceRegistrar, srv DatabaseServer) {
 	s.RegisterService(&Database_ServiceDesc, srv)
 }
 
-func _Database_RecvCRDTStates_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RecvCRDTStatesRequest)
+func _Database_MergeCRDTStates_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MergeCRDTStatesRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(DatabaseServer).RecvCRDTStates(ctx, in)
+		return srv.(DatabaseServer).MergeCRDTStates(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Database_RecvCRDTStates_FullMethodName,
+		FullMethod: Database_MergeCRDTStates_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DatabaseServer).RecvCRDTStates(ctx, req.(*RecvCRDTStatesRequest))
+		return srv.(DatabaseServer).MergeCRDTStates(ctx, req.(*MergeCRDTStatesRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -100,8 +100,8 @@ var Database_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*DatabaseServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "RecvCRDTStates",
-			Handler:    _Database_RecvCRDTStates_Handler,
+			MethodName: "MergeCRDTStates",
+			Handler:    _Database_MergeCRDTStates_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

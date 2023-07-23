@@ -55,5 +55,8 @@ func startCRDTTimer() {
 }
 
 func syncPendingCRDTStates() {
-	
+	for _, client := range rpcClients {
+		_ = client
+		// client.MergeCRDTStates()
+	}
 }

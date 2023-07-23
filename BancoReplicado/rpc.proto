@@ -5,7 +5,7 @@ option go_package = "banco_de_dados/pb";
 package banco_de_dados;
 
 service Database {
-    rpc RecvCRDTStates (RecvCRDTStatesRequest) returns (RecvCRDTStatesReply) {}
+    rpc MergeCRDTStates (MergeCRDTStatesRequest) returns (MergeCRDTStatesReply) {}
 }
 
 message HLC {
@@ -26,17 +26,13 @@ message MergeableMap {
 }
 
 message DocumentCRDTState {
-    string docId = 1;
-    MergeableMap map = 2;
-}
-
-message TableCRDTStates {
     string tableName = 1;
-    repeated DocumentCRDTState docs = 2;
+    string docId     = 2;
+    MergeableMap map = 3;
 }
 
-message RecvCRDTStatesRequest {
-    repeated TableCRDTStates tables = 1;
+message MergeCRDTStatesRequest {
+    repeated DocumentCRDTState documents = 1;
 }
 
-message RecvCRDTStatesReply {}
+message MergeCRDTStatesReply {}

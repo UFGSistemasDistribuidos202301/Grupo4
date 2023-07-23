@@ -22,17 +22,14 @@ type server struct {
 	ID uint
 }
 
-func (s *server) RecvCRDTStates(
+func (s *server) MergeCRDTStates(
 	ctx context.Context,
-	in *pb.RecvCRDTStatesRequest,
-) (*pb.RecvCRDTStatesReply, error) {
-	for _, table := range in.Tables {
-		for _, doc := range table.GetDocs() {
-			_ = doc
-			_ = table
-		}
+	in *pb.MergeCRDTStatesRequest,
+) (*pb.MergeCRDTStatesReply, error) {
+	for _, state := range in.Documents {
+		_ = state
 	}
-	return &pb.RecvCRDTStatesReply{}, nil
+	return &pb.MergeCRDTStatesReply{}, nil
 }
 
 func startRPCServer() {
