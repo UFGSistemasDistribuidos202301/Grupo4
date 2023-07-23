@@ -6,8 +6,15 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"sync"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+)
+
+var (
+	rpcClients     = []pb.DatabaseClient{}
+	rpcClientsLock = sync.Mutex{}
 )
 
 type server struct {
@@ -29,7 +36,7 @@ func (s *server) RecvCRDTStates(
 }
 
 func startRPCServer() {
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", 8000+*nodeID))
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", rpcPort))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
@@ -38,5 +45,31 @@ func startRPCServer() {
 	log.Printf("RPC server listening at %v\n", lis.Addr())
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
+	}
+}
+
+func connectRPCClients() {
+	rpcClientsLock.Lock()
+	defer rpcClientsLock.Unlock()
+
+	for i := *baseNodeID; i < *baseNodeID+*nodeCount; i++ {
+		if i == *nodeID {
+			continue
+		}
+
+		addr := fmt.Sprintf("localhost:%d", *baseRPCPort+i)
+
+		conn, err := grpc.Dial(
+			addr,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		)
+		if err != nil {
+			log.Fatalf("did not connect: %v", err)
+		}
+		c := pb.NewDatabaseClient(conn)
+
+		log.Printf("RPC connected to node #%d\n", i)
+
+		rpcClients = append(rpcClients, c)
 	}
 }

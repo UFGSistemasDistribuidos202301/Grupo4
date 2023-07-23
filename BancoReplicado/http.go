@@ -305,7 +305,7 @@ func startHTTPServer() {
 		}
 	})
 
-	addr := fmt.Sprintf(":%d", *baseHTTPPort)
+	addr := fmt.Sprintf(":%d", httpPort)
 	log.Printf("HTTP server listening at %s\n", addr)
 	http.ListenAndServe(addr, r)
 }
