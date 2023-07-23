@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+option go_package = "banco_de_dados/pb";
+
+package banco_de_dados;
+
+service Database {
+    rpc RecvCRDTStates (RecvCRDTStatesRequest) returns (RecvCRDTStatesReply) {}
+}
+
+message HLC {
+    int64  timestamp = 1;
+    int64  counter   = 2;
+    uint32 nodeID    = 3;
+}
+
+message MergeableString {
+    string values = 1;
+    HLC point     = 2;
+}
+
+message MergeableMap {
+	HLC point = 1;
+	map<string, MergeableString> map = 2;
+    map<string, HLC> tombstones = 3;
+}
+
+message DocumentCRDTState {
+    string docId = 1;
+    MergeableMap map = 2;
+}
+
+message TableCRDTStates {
+    string tableName = 1;
+    repeated DocumentCRDTState docs = 2;
+}
+
+message RecvCRDTStatesRequest {
+    repeated TableCRDTStates tables = 1;
+}
+
+message RecvCRDTStatesReply {}

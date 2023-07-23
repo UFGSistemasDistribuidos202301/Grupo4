@@ -1,7 +1,14 @@
 package main
 
 import (
+	"banco_de_dados/crdt"
+	"time"
+
 	bolt "go.etcd.io/bbolt"
+)
+
+var (
+	pendingCRDTStates = make(chan *crdt.MergeableMap)
 )
 
 type CRDTTable struct {
@@ -38,4 +45,15 @@ func (t *CRDTTable) ForEach(
 	callback func(docId string, doc map[string]string) error,
 ) error {
 	panic("unimplemented")
+}
+
+func startCRDTTimer() {
+	for {
+		time.Sleep(time.Second * 10)
+		syncPendingCRDTStates()
+	}
+}
+
+func syncPendingCRDTStates() {
+
 }
