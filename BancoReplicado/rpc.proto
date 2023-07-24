@@ -15,14 +15,15 @@ message HLC {
 }
 
 message MergeableString {
-    string values = 1;
-    HLC point     = 2;
+    string value = 1;
+    HLC point    = 2;
 }
 
 message MergeableMap {
 	HLC point = 1;
-	map<string, MergeableString> map = 2;
-    map<string, HLC> tombstones = 3;
+	bool deleted = 2;
+	map<string, MergeableString> map = 3;
+    map<string, HLC> tombstones = 4;
 }
 
 message DocumentCRDTState {

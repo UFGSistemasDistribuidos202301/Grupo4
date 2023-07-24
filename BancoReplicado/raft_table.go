@@ -115,7 +115,7 @@ func (t *RaftTable) ForEach(
 ) error {
 	bucket := tx.Bucket([]byte(t.Name))
 	if bucket == nil {
-		log.Panic("unexpected bucket == nil")
+		return errors.New("table does not exist")
 	}
 
 	return bucket.ForEach(func(docIdBytes, docBytes []byte) error {

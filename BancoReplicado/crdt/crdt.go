@@ -1,6 +1,7 @@
 package crdt
 
 import (
+	"banco_de_dados/pb"
 	"time"
 )
 
@@ -82,6 +83,22 @@ func NullHLC() HLC {
 	}
 }
 
+func (hlc HLC) ToPB() *pb.HLC {
+	return &pb.HLC{
+		Timestamp: hlc.Timestamp,
+		NodeID:    uint32(hlc.NodeID),
+		Counter:   int64(hlc.Counter),
+	}
+}
+
+func HLCFromPB(hlc *pb.HLC) HLC {
+	return HLC{
+		Timestamp: hlc.Timestamp,
+		NodeID:    int(hlc.NodeID),
+		Counter:   int(hlc.Counter),
+	}
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 
 type MergeableString struct {
@@ -99,10 +116,25 @@ func (m MergeableString) Merge(other MergeableString) MergeableString {
 	return other
 }
 
+func (m MergeableString) ToPB() *pb.MergeableString {
+	return &pb.MergeableString{
+		Value: m.Value,
+		Point: m.Point.ToPB(),
+	}
+}
+
+func MergeableStringFromPB(m *pb.MergeableString) MergeableString {
+	return MergeableString{
+		Value: m.Value,
+		Point: HLCFromPB(m.Point),
+	}
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 
 type MergeableMap struct {
 	Point      HLC
+	Deleted    bool
 	Map        map[string]MergeableString
 	Tombstones map[string]HLC
 }
@@ -116,6 +148,28 @@ func (m MergeableMap) Put(key, value string) MergeableMap {
 		Value: value,
 	}
 	delete(m2.Tombstones, key)
+
+	return m2
+}
+
+func (m MergeableMap) SetDeleted(deleted bool) MergeableMap {
+	if m.Deleted == deleted {
+		return m
+	}
+
+	m2 := m.clone()
+
+	// Remove all values from current map
+	keys := []string{}
+	for k := range m2.Map {
+		keys = append(keys, k)
+	}
+	for _, key := range keys {
+		m2 = m2.Remove(key)
+	}
+
+	m2.Point = m2.Point.Increment()
+	m2.Deleted = deleted
 
 	return m2
 }
@@ -234,5 +288,43 @@ func NewMergeableMap(NodeID int) MergeableMap {
 		},
 		Map:        map[string]MergeableString{},
 		Tombstones: map[string]HLC{},
+	}
+}
+
+func (m MergeableMap) ToPB() *pb.MergeableMap {
+	tombstones := make(map[string]*pb.HLC)
+	for k, v := range m.Tombstones {
+		tombstones[k] = v.ToPB()
+	}
+
+	stringMap := make(map[string]*pb.MergeableString)
+	for k, v := range m.Map {
+		stringMap[k] = v.ToPB()
+	}
+
+	return &pb.MergeableMap{
+		Point:      m.Point.ToPB(),
+		Map:        stringMap,
+		Tombstones: tombstones,
+		Deleted:    m.Deleted,
+	}
+}
+
+func MergeableMapFromPB(m *pb.MergeableMap) MergeableMap {
+	tombstones := make(map[string]HLC)
+	for k, v := range m.Tombstones {
+		tombstones[k] = HLCFromPB(v)
+	}
+
+	stringMap := make(map[string]MergeableString)
+	for k, v := range m.Map {
+		stringMap[k] = MergeableStringFromPB(v)
+	}
+
+	return MergeableMap{
+		Point:      HLCFromPB(m.Point),
+		Map:        stringMap,
+		Tombstones: tombstones,
+		Deleted:    m.Deleted,
 	}
 }
