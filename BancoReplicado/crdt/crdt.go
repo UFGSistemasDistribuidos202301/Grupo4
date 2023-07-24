@@ -231,10 +231,16 @@ func (m MergeableMap) Merge(other MergeableMap) MergeableMap {
 		iter(key)
 	}
 
+	deleted := other.Deleted
+	if m.Point.Cmp(other.Point) >= 0 {
+		deleted = m.Deleted
+	}
+
 	return MergeableMap{
 		Point:      m.Point.Merge(other.Point),
 		Map:        elements,
 		Tombstones: allTombstones,
+		Deleted:    deleted,
 	}
 }
 

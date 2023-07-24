@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"sync"
@@ -27,6 +28,10 @@ var (
 	visEventsChannel = make(chan VisEvent)
 )
 
+type TableCreationParams struct {
+	StrongConsistency bool `json:"strong_consistency"`
+}
+
 func startHTTPServer() {
 	go func() {
 		for msg := range visEventsChannel {
@@ -47,8 +52,19 @@ func startHTTPServer() {
 	r.Put("/{tableName}", func(w http.ResponseWriter, r *http.Request) {
 		tableName := chi.URLParam(r, "tableName")
 
-		err := DB.OpenTx(func(tx *bolt.Tx) error {
-			_, err := DB.CreateTable(tx, tableName, true)
+		body, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			log.Panic(err)
+		}
+
+		var params TableCreationParams
+		err = json.Unmarshal(body, &params)
+		if err != nil {
+			log.Panic(err)
+		}
+
+		err = DB.OpenTx(func(tx *bolt.Tx) error {
+			_, err := DB.CreateTable(tx, tableName, params.StrongConsistency)
 			if err != nil {
 				return err
 			}

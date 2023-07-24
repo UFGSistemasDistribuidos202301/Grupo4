@@ -224,6 +224,41 @@ func (t *CRDTTable) ForEach(
 	})
 }
 
+func (t *CRDTTable) Merge(
+	tx *bolt.Tx,
+	docId string,
+	receivedCrdtDoc crdt.MergeableMap,
+) error {
+	bucket := tx.Bucket([]byte(t.Name))
+	if bucket == nil {
+		return errors.New("table does not exist")
+	}
+
+	var crdtDoc crdt.MergeableMap
+	if docBytes := bucket.Get([]byte(docId)); docBytes != nil {
+		err := json.Unmarshal(docBytes, &crdtDoc)
+		if err != nil {
+			return err
+		}
+	} else {
+		crdtDoc = crdt.NewMergeableMap(int(*nodeID))
+	}
+
+	crdtDoc = crdtDoc.Merge(receivedCrdtDoc)
+
+	docBytes, err := json.Marshal(crdtDoc)
+	if err != nil {
+		return err
+	}
+
+	err = bucket.Put([]byte(docId), docBytes)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func queueCRDTState(tableName string, docId string, m crdt.MergeableMap) {
 	pendingCRDTStatesLock.Lock()
 	defer pendingCRDTStatesLock.Unlock()

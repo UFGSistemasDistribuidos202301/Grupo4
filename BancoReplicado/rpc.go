@@ -1,13 +1,16 @@
 package main
 
 import (
+	"banco_de_dados/crdt"
 	"banco_de_dados/pb"
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
 	"sync"
 
+	bolt "go.etcd.io/bbolt"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -26,9 +29,37 @@ func (s *server) MergeCRDTStates(
 	ctx context.Context,
 	in *pb.MergeCRDTStatesRequest,
 ) (*pb.MergeCRDTStatesReply, error) {
-	for _, state := range in.Documents {
-		_ = state
+	log.Printf("Received CRDT sync data")
+
+	err := DB.OpenTx(func(tx *bolt.Tx) error {
+		for _, state := range in.Documents {
+			receivedCrdtDoc := crdt.MergeableMapFromPB(state.Map)
+
+			table, err := DB.GetTable(tx, state.TableName)
+			if err != nil {
+				table, err = DB.CreateTable(tx, state.TableName, false)
+				if err != nil {
+					return err
+				}
+			}
+
+			crdtTable, ok := table.(*CRDTTable)
+			if !ok {
+				return errors.New("tried to do a CRDT merge on a non-CRDT table")
+			}
+
+			err = crdtTable.Merge(tx, state.DocId, receivedCrdtDoc)
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
+
 	return &pb.MergeCRDTStatesReply{}, nil
 }
 
