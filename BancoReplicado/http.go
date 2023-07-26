@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/go-chi/chi/v5"
@@ -30,6 +31,25 @@ var (
 
 type TableCreationParams struct {
 	StrongConsistency bool `json:"strong_consistency"`
+}
+
+func fileServer(r chi.Router, path string, root http.FileSystem) {
+	if strings.ContainsAny(path, "{}*") {
+		panic("FileServer does not permit any URL parameters.")
+	}
+
+	if path != "/" && path[len(path)-1] != '/' {
+		r.Get(path, http.RedirectHandler(path+"/", 301).ServeHTTP)
+		path += "/"
+	}
+	path += "*"
+
+	r.Get(path, func(w http.ResponseWriter, r *http.Request) {
+		rctx := chi.RouteContext(r.Context())
+		pathPrefix := strings.TrimSuffix(rctx.RoutePattern(), "/*")
+		fs := http.StripPrefix(pathPrefix, http.FileServer(root))
+		fs.ServeHTTP(w, r)
+	})
 }
 
 func startHTTPServer() {
@@ -80,8 +100,8 @@ func startHTTPServer() {
 		}
 	})
 
-	fs := http.FileServer(http.Dir("visualization"))
-	r.Handle("/visualization/*", http.StripPrefix("/visualization/", fs))
+	filesDir := http.Dir(http.Dir("visualization"))
+	fileServer(r, "/visualization", filesDir)
 
 	// PUT /<table> (body: { "strong_consistency": "true" })
 	// Cria uma tabela (indicando se será eventual ou forte)
