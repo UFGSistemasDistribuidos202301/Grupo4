@@ -47,9 +47,45 @@ func startHTTPServer() {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
+	// Websocket endpoint
+	r.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			log.Printf("error: %v\n", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		defer conn.Close()
+
+		recv := make(chan VisEvent)
+		wsListenersLock.Lock()
+		wsListeners[conn] = recv
+		wsListenersLock.Unlock()
+		defer func() {
+			wsListenersLock.Lock()
+			defer wsListenersLock.Unlock()
+			delete(wsListeners, conn)
+		}()
+
+		for event := range recv {
+			eventJson, err := json.Marshal(event)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			if err := conn.WriteMessage(1, eventJson); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+		}
+	})
+
+	fs := http.FileServer(http.Dir("visualization"))
+	r.Handle("/visualization/*", http.StripPrefix("/visualization/", fs))
+
 	// PUT /<table> (body: { "strong_consistency": "true" })
 	// Cria uma tabela (indicando se será eventual ou forte)
-	r.Put("/{tableName}", func(w http.ResponseWriter, r *http.Request) {
+	r.Put("/db/{tableName}", func(w http.ResponseWriter, r *http.Request) {
 		tableName := chi.URLParam(r, "tableName")
 
 		body, err := ioutil.ReadAll(r.Body)
@@ -85,7 +121,7 @@ func startHTTPServer() {
 
 	// DELETE /<table>
 	// Remove uma tabela
-	r.Delete("/{tableName}", func(w http.ResponseWriter, r *http.Request) {
+	r.Delete("/db/{tableName}", func(w http.ResponseWriter, r *http.Request) {
 		tableName := chi.URLParam(r, "tableName")
 
 		err := DB.OpenTx(func(tx *bolt.Tx) error {
@@ -106,7 +142,7 @@ func startHTTPServer() {
 
 	// GET /<table>/<doc id>
 	// Retorna o mapa de chaves e valores de um documento
-	r.Get("/{tableName}/{docId}", func(w http.ResponseWriter, r *http.Request) {
+	r.Get("/db/{tableName}/{docId}", func(w http.ResponseWriter, r *http.Request) {
 		tableName := chi.URLParam(r, "tableName")
 		docId := chi.URLParam(r, "docId")
 
@@ -133,7 +169,7 @@ func startHTTPServer() {
 	// PUT /<table>/<doc id> (body: keys/values)
 	// Substitui o documento inteiro, apagando outras
 	// chaves não especificadas nesta chamada
-	r.Put("/{tableName}/{docId}", func(w http.ResponseWriter, r *http.Request) {
+	r.Put("/db/{tableName}/{docId}", func(w http.ResponseWriter, r *http.Request) {
 		tableName := chi.URLParam(r, "tableName")
 		docId := chi.URLParam(r, "docId")
 		bodyMap := getBodyMap(r)
@@ -173,7 +209,7 @@ func startHTTPServer() {
 	// Antes: {"chave1": "valor1", "chave2": "valor2"}
 	// PATCH {"chave3": "valor3", "chave2": "asdasdasdas"}
 	// Depois: {"chave1": "valor1", "chave2": "asdasdasdas", "chave3": "valor3"}
-	r.Patch("/{tableName}/{docId}", func(w http.ResponseWriter, r *http.Request) {
+	r.Patch("/db/{tableName}/{docId}", func(w http.ResponseWriter, r *http.Request) {
 		tableName := chi.URLParam(r, "tableName")
 		docId := chi.URLParam(r, "docId")
 		bodyMap := getBodyMap(r)
@@ -209,7 +245,7 @@ func startHTTPServer() {
 
 	// DELETE /<table>/<doc id>
 	// Remove um documento
-	r.Delete("/{tableName}/{docId}", func(w http.ResponseWriter, r *http.Request) {
+	r.Delete("/db/{tableName}/{docId}", func(w http.ResponseWriter, r *http.Request) {
 		tableName := chi.URLParam(r, "tableName")
 		docId := chi.URLParam(r, "docId")
 
@@ -241,7 +277,7 @@ func startHTTPServer() {
 
 	// GET /<table>
 	// Retorna todos os documentos de uma tabela
-	r.Get("/{tableName}", func(w http.ResponseWriter, r *http.Request) {
+	r.Get("/db/{tableName}", func(w http.ResponseWriter, r *http.Request) {
 		tableName := chi.URLParam(r, "tableName")
 
 		tableValues := map[string]map[string]string{}
@@ -267,7 +303,7 @@ func startHTTPServer() {
 
 	// GET /
 	// Retorna todos os documentos de todas as tabelas
-	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+	r.Get("/db", func(w http.ResponseWriter, r *http.Request) {
 		dbValues := map[string]map[string]map[string]string{}
 
 		err := DB.OpenTx(func(tx *bolt.Tx) error {
@@ -287,38 +323,6 @@ func startHTTPServer() {
 		}
 
 		writeBodyJson(w, dbValues)
-	})
-
-	// Websocket endpoint
-	r.Get("/ws", func(w http.ResponseWriter, r *http.Request) {
-		conn, err := upgrader.Upgrade(w, r, nil)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		defer conn.Close()
-
-		recv := make(chan VisEvent)
-		wsListenersLock.Lock()
-		wsListeners[conn] = recv
-		wsListenersLock.Unlock()
-		defer func() {
-			wsListenersLock.Lock()
-			defer wsListenersLock.Unlock()
-			delete(wsListeners, conn)
-		}()
-
-		for event := range recv {
-			eventJson, err := json.Marshal(event)
-			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-			if err := conn.WriteMessage(1, eventJson); err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-		}
 	})
 
 	addr := fmt.Sprintf(":%d", httpPort)

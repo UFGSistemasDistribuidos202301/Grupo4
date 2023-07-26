@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket JSON Reader</title>
+</head>
+<body>
+    <h1>WebSocket JSON Data:</h1>
+    <pre id="jsonOutput"></pre>
+
+    <script>
+        const outputElement = document.getElementById("jsonOutput");
+        const ws = new WebSocket("ws://localhost:3001/ws"); 
+
+        ws.onmessage = (event) => {
+            const jsonData = JSON.parse(event.data);
+            const formattedJson = JSON.stringify(jsonData, null, 2); 
+            outputElement.textContent = formattedJson;
+        };
+    </script>
+</body>
+</html>

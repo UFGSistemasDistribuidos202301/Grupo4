@@ -136,7 +136,7 @@ func (db *Database) OpenTx(callback func(tx *bolt.Tx) error) error {
 }
 
 func getDBDir() string {
-	return fmt.Sprintf("./node_%d", *nodeID)
+	return fmt.Sprintf("./nodes/node_%d", *nodeID)
 }
 
 func openDB() {
