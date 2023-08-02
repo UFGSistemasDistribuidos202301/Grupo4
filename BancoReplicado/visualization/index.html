@@ -9,13 +9,21 @@
 
     <script>
         const outputElement = document.getElementById("jsonOutput");
-        const ws = new WebSocket("ws://localhost:3001/ws"); 
+        const ports = [3001, 3002, 3003, 3004];
+        const websockets = [];
 
-        ws.onmessage = (event) => {
-            const jsonData = JSON.parse(event.data);
-            const formattedJson = JSON.stringify(jsonData, null, 2); 
-            outputElement.textContent = formattedJson;
-        };
+        function connectWebSocket(port) {
+            const ws = new WebSocket(`ws://localhost:${port}/ws`);
+            ws.onmessage = (event) => {
+                const jsonData = JSON.parse(event.data);
+                const formattedJson = JSON.stringify(jsonData, null, 2);
+                outputElement.textContent = formattedJson;
+            };
+            websockets.push(ws);
+        }
+
+        ports.forEach(port => connectWebSocket(port));
+
     </script>
 </body>
 </html>
