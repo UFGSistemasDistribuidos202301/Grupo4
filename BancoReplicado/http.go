@@ -23,7 +23,9 @@ type VisEvent struct {
 }
 
 var (
-	upgrader         = websocket.Upgrader{} // use default options
+	upgrader = websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool { return true },
+	}
 	wsListeners      = make(map[*websocket.Conn]chan<- VisEvent)
 	wsListenersLock  = sync.Mutex{}
 	visEventsChannel = make(chan VisEvent)
