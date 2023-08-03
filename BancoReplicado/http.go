@@ -71,7 +71,9 @@ func startHTTPServer() {
 
 	// Websocket endpoint
 	r.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		// Upgrade connection to websocket protocol and send events to client
 		conn, err := upgrader.Upgrade(w, r, nil)
+
 		if err != nil {
 			log.Printf("error: %v\n", err)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -89,6 +91,7 @@ func startHTTPServer() {
 			delete(wsListeners, conn)
 		}()
 
+		// Send all events to client until connection is closed
 		for event := range recv {
 			eventJson, err := json.Marshal(event)
 			if err != nil {
@@ -321,6 +324,14 @@ func startHTTPServer() {
 		}
 
 		writeBodyJson(w, tableValues)
+
+		// Send event
+		visEventsChannel <- VisEvent{
+			NodeID: *nodeID,
+			Kind:   "get_table_documents",
+			Data:   map[string]any{tableName: tableValues},
+		}
+
 	})
 
 	// GET /
@@ -345,6 +356,14 @@ func startHTTPServer() {
 		}
 
 		writeBodyJson(w, dbValues)
+
+		// Send event
+		visEventsChannel <- VisEvent{
+			NodeID: *nodeID,
+			Kind:   "get_all_docs",
+			Data:   dbValues,
+		}
+
 	})
 
 	addr := fmt.Sprintf(":%d", httpPort)
