@@ -331,7 +331,6 @@ func startHTTPServer() {
 			Kind:   "get_table_documents",
 			Data:   map[string]any{tableName: tableValues},
 		}
-
 	})
 
 	// GET /

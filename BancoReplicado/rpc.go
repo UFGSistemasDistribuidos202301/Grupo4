@@ -53,12 +53,17 @@ func (s *server) MergeCRDTStates(
 				return err
 			}
 
+			doc, err := table.Get(tx, state.DocId)
+			if err != nil {
+				return err
+			}
+
 			// Send event
 			visEventsChannel <- VisEvent{
 				NodeID: *nodeID,
 				Kind:   "merge_crdt_states",
-				Data:   receivedCrdtDoc}
-
+				Data:   map[string]any{state.DocId: doc},
+			}
 		}
 
 		return nil
