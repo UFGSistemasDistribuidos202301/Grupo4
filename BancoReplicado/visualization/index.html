@@ -2,13 +2,25 @@
 <html>
 <head>
     <title>WebSocket JSON Reader</title>
+    <style>
+
+        pre {                
+            width: 30%;
+            float: left;
+            margin: 10px;
+            padding: 10px;
+            border: 1px solid #ccc;
+        }
+    </style>
 </head>
 <body>
     <h1>WebSocket JSON Data:</h1>
-    <pre id="jsonOutput"></pre>
+    <pre id="jsonOutput_3001"></pre>
+    <pre id="jsonOutput_3002"></pre>
+    <pre id="jsonOutput_3003"></pre>
+    <pre id="jsonOutput_3004"></pre>
 
     <script>
-        const outputElement = document.getElementById("jsonOutput");
         const ports = [3001, 3002, 3003, 3004];
         const websockets = [];
 
@@ -17,6 +29,7 @@
             ws.onmessage = (event) => {
                 const jsonData = JSON.parse(event.data);
                 const formattedJson = JSON.stringify(jsonData, null, 2);
+                const outputElement = document.getElementById(`jsonOutput_${port}`);
                 outputElement.textContent = formattedJson;
             };
             websockets.push(ws);
