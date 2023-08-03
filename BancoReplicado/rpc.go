@@ -52,6 +52,13 @@ func (s *server) MergeCRDTStates(
 			if err != nil {
 				return err
 			}
+
+			// Send event
+			visEventsChannel <- VisEvent{
+				NodeID: *nodeID,
+				Kind:   "merge_crdt_states",
+				Data:   receivedCrdtDoc}
+
 		}
 
 		return nil
