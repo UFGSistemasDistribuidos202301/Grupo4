@@ -3,40 +3,77 @@
 <head>
     <title>WebSocket JSON Reader</title>
     <style>
-
-        pre {                
+        /* Estilo para os elementos <pre> que exibem os dados JSON */
+        pre {
             width: 30%;
             float: left;
             margin: 10px;
             padding: 10px;
             border: 1px solid #ccc;
+            border-radius: 5px;
+            box-shadow: 0 0 5px #ccc;
+            overflow: auto;
+            transition: box-shadow 0.3s;
+        }
+
+        /* Estilo para realçar o bloco quando uma mensagem for recebida */
+        pre.received-message {
+            animation: pulse 1s;
+        }
+
+        /* Animação para destacar o bloco */
+        @keyframes pulse {
+            0% { box-shadow: 0 0 5px #ccc; }
+            50% { box-shadow: 0 0 15px #00ff00, 0 0 20px #00ff00; }
+            100% { box-shadow: 0 0 5px #ccc; }
+        }
+
+        /* Estilo para o cabeçalho */
+        h1 {
+            clear: both;
+            text-align: center;
+            margin-top: 20px;
         }
     </style>
 </head>
 <body>
     <h1>WebSocket JSON Data:</h1>
+    <!-- Áreas onde serão exibidos os dados JSON recebidos de cada porta -->
     <pre id="jsonOutput_3001"></pre>
     <pre id="jsonOutput_3002"></pre>
     <pre id="jsonOutput_3003"></pre>
     <pre id="jsonOutput_3004"></pre>
 
     <script>
+        // Portas para conectar no WebSocket
         const ports = [3001, 3002, 3003, 3004];
         const websockets = [];
 
+        // Função para conectar a WebSocket em uma porta específica
         function connectWebSocket(port) {
             const ws = new WebSocket(`ws://localhost:${port}/ws`);
+
+            // Quando uma mensagem for recebida na conexão
             ws.onmessage = (event) => {
                 const jsonData = JSON.parse(event.data);
                 const formattedJson = JSON.stringify(jsonData, null, 2);
                 const outputElement = document.getElementById(`jsonOutput_${port}`);
                 outputElement.textContent = formattedJson;
+
+                // Adicionar a classe para destacar o bloco ao receber uma mensagem
+                outputElement.classList.add('received-message');
+
+                // Remover a classe após alguns segundos para remover o destaque
+                setTimeout(() => {
+                    outputElement.classList.remove('received-message');
+                }, 1000);
             };
+            // Adicionar a conexão WebSocket ao array de conexões
             websockets.push(ws);
         }
 
+        // Conectar WebSocket para cada porta definida no array 'ports'
         ports.forEach(port => connectWebSocket(port));
-
     </script>
 </body>
 </html>
