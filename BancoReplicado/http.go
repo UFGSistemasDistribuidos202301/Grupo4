@@ -54,7 +54,7 @@ func fileServer(r chi.Router, path string, root http.FileSystem) {
 	})
 }
 
-func startHTTPServer() {
+func (i *Instance) startHTTPServer() {
 	go func() {
 		for msg := range visEventsChannel {
 			wsListenersLock.Lock()
@@ -75,7 +75,7 @@ func startHTTPServer() {
 		conn, err := upgrader.Upgrade(w, r, nil)
 
 		if err != nil {
-			log.Printf("error: %v\n", err)
+			i.Logger.Printf("error: %v\n", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -124,8 +124,8 @@ func startHTTPServer() {
 			log.Panic(err)
 		}
 
-		err = DB.OpenTx(func(tx *bolt.Tx) error {
-			_, err := DB.CreateTable(tx, tableName, params.StrongConsistency)
+		err = i.DB.OpenTx(func(tx *bolt.Tx) error {
+			_, err := i.DB.CreateTable(tx, tableName, params.StrongConsistency)
 			if err != nil {
 				return err
 			}
@@ -138,7 +138,7 @@ func startHTTPServer() {
 
 		// Send event
 		visEventsChannel <- VisEvent{
-			NodeID: *nodeID,
+			NodeID: i.NodeID,
 			Kind:   "create_table",
 			Data:   tableName,
 		}
@@ -149,8 +149,8 @@ func startHTTPServer() {
 	r.Delete("/db/{tableName}", func(w http.ResponseWriter, r *http.Request) {
 		tableName := chi.URLParam(r, "tableName")
 
-		err := DB.OpenTx(func(tx *bolt.Tx) error {
-			return DB.DeleteTable(tx, tableName)
+		err := i.DB.OpenTx(func(tx *bolt.Tx) error {
+			return i.DB.DeleteTable(tx, tableName)
 		})
 		if err != nil {
 			writeError(w, "could not create table: "+err.Error())
@@ -159,7 +159,7 @@ func startHTTPServer() {
 
 		// Send event
 		visEventsChannel <- VisEvent{
-			NodeID: *nodeID,
+			NodeID: i.NodeID,
 			Kind:   "delete_table",
 			Data:   tableName,
 		}
@@ -171,8 +171,8 @@ func startHTTPServer() {
 		tableName := chi.URLParam(r, "tableName")
 		docId := chi.URLParam(r, "docId")
 
-		err := DB.OpenTx(func(tx *bolt.Tx) error {
-			table, err := DB.GetTable(tx, tableName)
+		err := i.DB.OpenTx(func(tx *bolt.Tx) error {
+			table, err := i.DB.GetTable(tx, tableName)
 			if err != nil {
 				return err
 			}
@@ -199,8 +199,8 @@ func startHTTPServer() {
 		docId := chi.URLParam(r, "docId")
 		bodyMap := getBodyMap(r)
 
-		err := DB.OpenTx(func(tx *bolt.Tx) error {
-			table, err := DB.GetTable(tx, tableName)
+		err := i.DB.OpenTx(func(tx *bolt.Tx) error {
+			table, err := i.DB.GetTable(tx, tableName)
 			if err != nil {
 				return err
 			}
@@ -214,7 +214,7 @@ func startHTTPServer() {
 
 			// Send event
 			visEventsChannel <- VisEvent{
-				NodeID: *nodeID,
+				NodeID: i.NodeID,
 				Kind:   "put_document",
 				Data:   map[string]any{docId: bodyMap},
 			}
@@ -239,8 +239,8 @@ func startHTTPServer() {
 		docId := chi.URLParam(r, "docId")
 		bodyMap := getBodyMap(r)
 
-		err := DB.OpenTx(func(tx *bolt.Tx) error {
-			table, err := DB.GetTable(tx, tableName)
+		err := i.DB.OpenTx(func(tx *bolt.Tx) error {
+			table, err := i.DB.GetTable(tx, tableName)
 			if err != nil {
 				return err
 			}
@@ -254,7 +254,7 @@ func startHTTPServer() {
 
 			// Send event
 			visEventsChannel <- VisEvent{
-				NodeID: *nodeID,
+				NodeID: i.NodeID,
 				Kind:   "patch_document",
 				Data:   map[string]any{docId: newDoc},
 			}
@@ -274,8 +274,8 @@ func startHTTPServer() {
 		tableName := chi.URLParam(r, "tableName")
 		docId := chi.URLParam(r, "docId")
 
-		err := DB.OpenTx(func(tx *bolt.Tx) error {
-			table, err := DB.GetTable(tx, tableName)
+		err := i.DB.OpenTx(func(tx *bolt.Tx) error {
+			table, err := i.DB.GetTable(tx, tableName)
 			if err != nil {
 				return err
 			}
@@ -294,7 +294,7 @@ func startHTTPServer() {
 
 		// Send event
 		visEventsChannel <- VisEvent{
-			NodeID: *nodeID,
+			NodeID: i.NodeID,
 			Kind:   "delete_document",
 			Data:   docId,
 		}
@@ -307,8 +307,8 @@ func startHTTPServer() {
 
 		tableValues := map[string]map[string]string{}
 
-		err := DB.OpenTx(func(tx *bolt.Tx) error {
-			table, err := DB.GetTable(tx, tableName)
+		err := i.DB.OpenTx(func(tx *bolt.Tx) error {
+			table, err := i.DB.GetTable(tx, tableName)
 			if err != nil {
 				return err
 			}
@@ -327,7 +327,7 @@ func startHTTPServer() {
 
 		// Send event
 		visEventsChannel <- VisEvent{
-			NodeID: *nodeID,
+			NodeID: i.NodeID,
 			Kind:   "get_table_documents",
 			Data:   map[string]any{tableName: tableValues},
 		}
@@ -338,8 +338,8 @@ func startHTTPServer() {
 	r.Get("/db", func(w http.ResponseWriter, r *http.Request) {
 		dbValues := map[string]map[string]map[string]string{}
 
-		err := DB.OpenTx(func(tx *bolt.Tx) error {
-			return DB.ForEach(tx, func(tableName string, table Table) error {
+		err := i.DB.OpenTx(func(tx *bolt.Tx) error {
+			return i.DB.ForEach(tx, func(tableName string, table Table) error {
 				if _, ok := dbValues[tableName]; !ok {
 					dbValues[tableName] = map[string]map[string]string{}
 				}
@@ -358,14 +358,14 @@ func startHTTPServer() {
 
 		// Send event
 		visEventsChannel <- VisEvent{
-			NodeID: *nodeID,
+			NodeID: i.NodeID,
 			Kind:   "get_all_docs",
 			Data:   dbValues,
 		}
 
 	})
 
-	addr := fmt.Sprintf(":%d", httpPort)
-	log.Printf("HTTP server listening at %s\n", addr)
+	addr := fmt.Sprintf(":%d", i.HTTPPort)
+	i.Logger.Printf("HTTP server listening at %s\n", addr)
 	http.ListenAndServe(addr, r)
 }

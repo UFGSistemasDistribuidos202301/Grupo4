@@ -8,36 +8,30 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"sync"
 
 	bolt "go.etcd.io/bbolt"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-var (
-	rpcClients     = []pb.DatabaseClient{}
-	rpcClientsLock = sync.Mutex{}
-)
-
 type server struct {
 	pb.UnimplementedDatabaseServer
-	ID uint
+	Instance *Instance
 }
 
 func (s *server) MergeCRDTStates(
 	ctx context.Context,
 	in *pb.MergeCRDTStatesRequest,
 ) (*pb.MergeCRDTStatesReply, error) {
-	log.Printf("Received CRDT sync data")
+	s.Instance.Logger.Printf("Received CRDT sync data")
 
-	err := DB.OpenTx(func(tx *bolt.Tx) error {
+	err := s.Instance.DB.OpenTx(func(tx *bolt.Tx) error {
 		for _, state := range in.Documents {
 			receivedCrdtDoc := crdt.MergeableMapFromPB(state.Map)
 
-			table, err := DB.GetTable(tx, state.TableName)
+			table, err := s.Instance.DB.GetTable(tx, state.TableName)
 			if err != nil {
-				table, err = DB.CreateTable(tx, state.TableName, false)
+				table, err = s.Instance.DB.CreateTable(tx, state.TableName, false)
 				if err != nil {
 					return err
 				}
@@ -60,7 +54,7 @@ func (s *server) MergeCRDTStates(
 
 			// Send event
 			visEventsChannel <- VisEvent{
-				NodeID: *nodeID,
+				NodeID: s.Instance.NodeID,
 				Kind:   "merge_crdt_states",
 				Data:   map[string]any{state.DocId: doc},
 			}
@@ -75,29 +69,29 @@ func (s *server) MergeCRDTStates(
 	return &pb.MergeCRDTStatesReply{}, nil
 }
 
-func startRPCServer() {
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", rpcPort))
+func (i *Instance) startRPCServer() {
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", i.RPCPort))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 	s := grpc.NewServer()
 	pb.RegisterDatabaseServer(s, &server{})
-	log.Printf("RPC server listening at %v\n", lis.Addr())
+	i.Logger.Printf("RPC server listening at %v\n", lis.Addr())
 	if err := s.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err)
+		i.Logger.Fatalf("failed to serve: %v", err)
 	}
 }
 
-func connectRPCClients() {
-	rpcClientsLock.Lock()
-	defer rpcClientsLock.Unlock()
+func (i *Instance) connectRPCClients() {
+	i.RPCClientsLock.Lock()
+	defer i.RPCClientsLock.Unlock()
 
-	for i := *baseNodeID; i < *baseNodeID+*nodeCount; i++ {
-		if i == *nodeID {
+	for j := *baseNodeID; j < *baseNodeID+*nodeCount; j++ {
+		if j == i.NodeID {
 			continue
 		}
 
-		addr := fmt.Sprintf("localhost:%d", *baseRPCPort+i)
+		addr := fmt.Sprintf("localhost:%d", *baseRPCPort+j)
 
 		conn, err := grpc.Dial(
 			addr,
@@ -108,8 +102,8 @@ func connectRPCClients() {
 		}
 		c := pb.NewDatabaseClient(conn)
 
-		log.Printf("RPC connected to node #%d\n", i)
+		i.Logger.Printf("RPC connected to node #%d\n", j)
 
-		rpcClients = append(rpcClients, c)
+		i.RPCClients = append(i.RPCClients, c)
 	}
 }

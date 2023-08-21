@@ -3,16 +3,11 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
 
 	bolt "go.etcd.io/bbolt"
-)
-
-var (
-	DB *Database
 )
 
 type Table interface {
@@ -133,18 +128,6 @@ func (db *Database) ForEach(
 
 func (db *Database) OpenTx(callback func(tx *bolt.Tx) error) error {
 	return db.db.Update(callback)
-}
-
-func getDBDir() string {
-	return fmt.Sprintf("./nodes/node_%d", *nodeID)
-}
-
-func openDB() {
-	db, err := bolt.Open(getDBDir(), 0600, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-	DB = &Database{db: db}
 }
 
 func writeError(w http.ResponseWriter, msg string) {

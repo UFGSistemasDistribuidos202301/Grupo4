@@ -8,20 +8,15 @@ import (
 	"errors"
 	"log"
 	"strings"
-	"sync"
 	"time"
 
 	bolt "go.etcd.io/bbolt"
 )
 
-var (
-	pendingCRDTStates     = []*pb.DocumentCRDTState{}
-	pendingCRDTStatesLock sync.Mutex
-)
-
 type CRDTTable struct {
-	DB   *bolt.DB
-	Name string
+	DB       *bolt.DB
+	Instance *Instance
+	Name     string
 }
 
 func (t *CRDTTable) Put(
@@ -52,7 +47,7 @@ func (t *CRDTTable) Put(
 			crdtDoc = crdtDoc.Remove(key)
 		}
 	} else {
-		crdtDoc = crdt.NewMergeableMap(int(*nodeID))
+		crdtDoc = crdt.NewMergeableMap(int(t.Instance.NodeID))
 	}
 
 	for k, v := range doc {
@@ -70,7 +65,7 @@ func (t *CRDTTable) Put(
 	}
 
 	// Queue CRDT broadcast
-	queueCRDTState(t.Name, docId, crdtDoc)
+	t.Instance.queueCRDTState(t.Name, docId, crdtDoc)
 
 	return nil
 }
@@ -93,7 +88,7 @@ func (t *CRDTTable) Patch(
 		}
 		crdtDoc = crdtDoc.SetDeleted(false)
 	} else {
-		crdtDoc = crdt.NewMergeableMap(int(*nodeID))
+		crdtDoc = crdt.NewMergeableMap(int(t.Instance.NodeID))
 	}
 
 	for k, v := range doc {
@@ -111,7 +106,7 @@ func (t *CRDTTable) Patch(
 	}
 
 	// Queue CRDT broadcast
-	queueCRDTState(t.Name, docId, crdtDoc)
+	t.Instance.queueCRDTState(t.Name, docId, crdtDoc)
 
 	doc = make(map[string]string)
 	for k, v := range crdtDoc.Map {
@@ -154,7 +149,7 @@ func (t *CRDTTable) Delete(tx *bolt.Tx, docId string) (map[string]string, error)
 	}
 
 	// Queue CRDT broadcast
-	queueCRDTState(t.Name, docId, crdtDoc)
+	t.Instance.queueCRDTState(t.Name, docId, crdtDoc)
 
 	doc := make(map[string]string)
 	for k, v := range crdtDoc.Map {
@@ -241,7 +236,7 @@ func (t *CRDTTable) Merge(
 			return err
 		}
 	} else {
-		crdtDoc = crdt.NewMergeableMap(int(*nodeID))
+		crdtDoc = crdt.NewMergeableMap(int(t.Instance.NodeID))
 	}
 
 	crdtDoc = crdtDoc.Merge(receivedCrdtDoc)
@@ -259,51 +254,51 @@ func (t *CRDTTable) Merge(
 	return nil
 }
 
-func queueCRDTState(tableName string, docId string, m crdt.MergeableMap) {
-	pendingCRDTStatesLock.Lock()
-	defer pendingCRDTStatesLock.Unlock()
+func (i *Instance) queueCRDTState(tableName string, docId string, m crdt.MergeableMap) {
+	i.PendingCRDTStatesLock.Lock()
+	defer i.PendingCRDTStatesLock.Unlock()
 
-	pendingCRDTStates = append(pendingCRDTStates, &pb.DocumentCRDTState{
+	i.PendingCRDTStates = append(i.PendingCRDTStates, &pb.DocumentCRDTState{
 		TableName: tableName,
 		DocId:     docId,
 		Map:       m.ToPB(),
 	})
 }
 
-func startCRDTTimer() {
+func (i *Instance) startCRDTTimer() {
 	for {
 		time.Sleep(time.Second * 10)
-		syncPendingCRDTStates()
+		i.syncPendingCRDTStates()
 	}
 }
 
-func syncPendingCRDTStates() {
-	pendingCRDTStatesLock.Lock()
-	defer pendingCRDTStatesLock.Unlock()
+func (i *Instance) syncPendingCRDTStates() {
+	i.PendingCRDTStatesLock.Lock()
+	defer i.PendingCRDTStatesLock.Unlock()
 
-	if len(pendingCRDTStates) == 0 {
+	if len(i.PendingCRDTStates) == 0 {
 		return
 	}
 
-	log.Printf("Sending CRDT sync states to other nodes...\n")
+	i.Logger.Printf("Sending CRDT sync states to other nodes...\n")
 
-	reverse(pendingCRDTStates)
+	reverse(i.PendingCRDTStates)
 
 	ctx := context.Background()
 
 	req := &pb.MergeCRDTStatesRequest{
-		Documents: pendingCRDTStates,
+		Documents: i.PendingCRDTStates,
 	}
 
-	for _, client := range rpcClients {
+	for _, client := range i.RPCClients {
 		_, err := client.MergeCRDTStates(ctx, req)
 		if err != nil {
-			log.Printf("Failed to send CRDT merge request to client: %s\n", err.Error())
+			i.Logger.Printf("Failed to send CRDT merge request to client: %s\n", err.Error())
 		}
 	}
 
 	// Empty the slice
-	pendingCRDTStates = pendingCRDTStates[:0]
+	i.PendingCRDTStates = i.PendingCRDTStates[:0]
 }
 
 func reverse[S ~[]E, E any](s S) {
