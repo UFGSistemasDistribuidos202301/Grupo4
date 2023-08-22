@@ -29,17 +29,21 @@ type Instance struct {
 	db *Database
 
 	// RPC
-	rpcClients     []pb.DatabaseClient
+	rpcClients     map[uint]pb.DatabaseClient
 	rpcClientsLock sync.Mutex
 
 	// CRDT
-	pendingCRDTStates     []*pb.DocumentCRDTState
+	pendingCRDTStates     map[uint][]*pb.DocumentCRDTState
 	pendingCRDTStatesLock sync.Mutex
 
 	// WebSocket events
 	wsListeners      map[*websocket.Conn]chan<- VisEvent
 	wsListenersLock  sync.Mutex
 	visEventsChannel chan VisEvent
+
+	// Offline simulation
+	offlineMutex sync.RWMutex
+	offline      bool
 }
 
 func RunInstance(nodeID uint) {
@@ -48,6 +52,9 @@ func RunInstance(nodeID uint) {
 		httpPort: *baseHTTPPort + nodeID,
 		rpcPort:  *baseRPCPort + nodeID,
 		logger:   log.New(os.Stdout, fmt.Sprintf("[NODE #%d] ", nodeID), log.LstdFlags),
+
+		rpcClients:        make(map[uint]pb.DatabaseClient),
+		pendingCRDTStates: make(map[uint][]*pb.DocumentCRDTState),
 
 		wsListeners:      make(map[*websocket.Conn]chan<- VisEvent),
 		visEventsChannel: make(chan VisEvent),
@@ -67,6 +74,13 @@ func (i *Instance) openDB() {
 		log.Fatal(err)
 	}
 	i.db = &Database{db: db, instance: i}
+}
+
+func (i *Instance) isOffline() bool {
+	i.offlineMutex.RLock()
+	offline := i.offline
+	i.offlineMutex.RUnlock()
+	return offline
 }
 
 func main() {

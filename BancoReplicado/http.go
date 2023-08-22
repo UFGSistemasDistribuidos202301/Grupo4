@@ -116,6 +116,10 @@ func (i *Instance) startHTTPServer() {
 	// PUT /<table> (body: { "strong_consistency": "true" })
 	// Cria uma tabela (indicando se será eventual ou forte)
 	r.Put("/db/{tableName}", func(w http.ResponseWriter, r *http.Request) {
+		if i.isOffline() {
+			log.Panic("Node is offline")
+		}
+
 		tableName := chi.URLParam(r, "tableName")
 
 		body, err := io.ReadAll(r.Body)
@@ -152,6 +156,10 @@ func (i *Instance) startHTTPServer() {
 	// DELETE /<table>
 	// Remove uma tabela
 	r.Delete("/db/{tableName}", func(w http.ResponseWriter, r *http.Request) {
+		if i.isOffline() {
+			log.Panic("Node is offline")
+		}
+
 		tableName := chi.URLParam(r, "tableName")
 
 		err := i.db.OpenTx(func(tx *bolt.Tx) error {
@@ -173,6 +181,10 @@ func (i *Instance) startHTTPServer() {
 	// GET /<table>/<doc id>
 	// Retorna o mapa de chaves e valores de um documento
 	r.Get("/db/{tableName}/{docId}", func(w http.ResponseWriter, r *http.Request) {
+		if i.isOffline() {
+			log.Panic("Node is offline")
+		}
+
 		tableName := chi.URLParam(r, "tableName")
 		docId := chi.URLParam(r, "docId")
 
@@ -200,6 +212,10 @@ func (i *Instance) startHTTPServer() {
 	// Substitui o documento inteiro, apagando outras
 	// chaves não especificadas nesta chamada
 	r.Put("/db/{tableName}/{docId}", func(w http.ResponseWriter, r *http.Request) {
+		if i.isOffline() {
+			log.Panic("Node is offline")
+		}
+
 		tableName := chi.URLParam(r, "tableName")
 		docId := chi.URLParam(r, "docId")
 		bodyMap := getBodyMap(r)
@@ -240,6 +256,10 @@ func (i *Instance) startHTTPServer() {
 	// PATCH {"chave3": "valor3", "chave2": "asdasdasdas"}
 	// Depois: {"chave1": "valor1", "chave2": "asdasdasdas", "chave3": "valor3"}
 	r.Patch("/db/{tableName}/{docId}", func(w http.ResponseWriter, r *http.Request) {
+		if i.isOffline() {
+			log.Panic("Node is offline")
+		}
+
 		tableName := chi.URLParam(r, "tableName")
 		docId := chi.URLParam(r, "docId")
 		bodyMap := getBodyMap(r)
@@ -276,6 +296,10 @@ func (i *Instance) startHTTPServer() {
 	// DELETE /<table>/<doc id>
 	// Remove um documento
 	r.Delete("/db/{tableName}/{docId}", func(w http.ResponseWriter, r *http.Request) {
+		if i.isOffline() {
+			log.Panic("Node is offline")
+		}
+
 		tableName := chi.URLParam(r, "tableName")
 		docId := chi.URLParam(r, "docId")
 
@@ -308,6 +332,10 @@ func (i *Instance) startHTTPServer() {
 	// GET /<table>
 	// Retorna todos os documentos de uma tabela
 	r.Get("/db/{tableName}", func(w http.ResponseWriter, r *http.Request) {
+		if i.isOffline() {
+			log.Panic("Node is offline")
+		}
+
 		tableName := chi.URLParam(r, "tableName")
 
 		tableValues := map[string]map[string]string{}
@@ -334,6 +362,10 @@ func (i *Instance) startHTTPServer() {
 	// GET /
 	// Retorna todos os documentos de todas as tabelas
 	r.Get("/db", func(w http.ResponseWriter, r *http.Request) {
+		if i.isOffline() {
+			log.Panic("Node is offline")
+		}
+
 		dbValues := map[string]map[string]map[string]string{}
 
 		err := i.db.OpenTx(func(tx *bolt.Tx) error {
@@ -356,7 +388,23 @@ func (i *Instance) startHTTPServer() {
 	})
 
 	r.Put("/crdt_sync", func(w http.ResponseWriter, r *http.Request) {
+		if i.isOffline() {
+			log.Panic("Node is offline")
+		}
+
 		i.syncPendingCRDTStates()
+	})
+
+	r.Put("/offline", func(w http.ResponseWriter, r *http.Request) {
+		i.offlineMutex.Lock()
+		i.offline = true
+		i.offlineMutex.Unlock()
+	})
+
+	r.Put("/online", func(w http.ResponseWriter, r *http.Request) {
+		i.offlineMutex.Lock()
+		i.offline = false
+		i.offlineMutex.Unlock()
 	})
 
 	addr := fmt.Sprintf(":%d", i.httpPort)

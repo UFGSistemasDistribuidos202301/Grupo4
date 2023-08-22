@@ -259,11 +259,19 @@ func (i *Instance) queueCRDTState(tableName string, docId string, m crdt.Mergeab
 	i.pendingCRDTStatesLock.Lock()
 	defer i.pendingCRDTStatesLock.Unlock()
 
-	i.pendingCRDTStates = append(i.pendingCRDTStates, &pb.DocumentCRDTState{
-		TableName: tableName,
-		DocId:     docId,
-		Map:       m.ToPB(),
-	})
+	for j := *baseNodeID; j < *baseNodeID+*nodeCount; j++ {
+		if j == i.nodeID {
+			continue
+		}
+
+		pendingStates := i.pendingCRDTStates[j]
+		pendingStates = append(pendingStates, &pb.DocumentCRDTState{
+			TableName: tableName,
+			DocId:     docId,
+			Map:       m.ToPB(),
+		})
+		i.pendingCRDTStates[j] = pendingStates
+	}
 }
 
 func (i *Instance) startCRDTTimer() {
@@ -273,33 +281,50 @@ func (i *Instance) startCRDTTimer() {
 	}
 }
 
-func (i *Instance) syncPendingCRDTStates() {
+func (i *Instance) syncPendingCRDTStatesWithNode(nodeID uint) {
 	i.pendingCRDTStatesLock.Lock()
 	defer i.pendingCRDTStatesLock.Unlock()
 
-	if len(i.pendingCRDTStates) == 0 {
+	pendingStates := i.pendingCRDTStates[nodeID]
+	if len(pendingStates) == 0 {
 		return
 	}
 
-	i.logger.Printf("Sending CRDT sync states to other nodes...\n")
-
-	reverse(i.pendingCRDTStates)
+	reverse(pendingStates)
 
 	ctx := context.Background()
 
 	req := &pb.MergeCRDTStatesRequest{
-		Documents: i.pendingCRDTStates,
+		Documents: pendingStates,
 	}
 
-	for _, client := range i.rpcClients {
-		_, err := client.MergeCRDTStates(ctx, req)
-		if err != nil {
-			i.logger.Printf("Failed to send CRDT merge request to client: %s\n", err.Error())
+	rpcClient := i.rpcClients[nodeID]
+	_, err := rpcClient.MergeCRDTStates(ctx, req)
+	if err != nil {
+		i.logger.Printf("Failed to send CRDT merge request to client: %s\n", err.Error())
+		return
+	} else {
+		// Empty the slice
+		i.pendingCRDTStates[nodeID] = pendingStates[:0]
+	}
+}
+
+func (i *Instance) syncPendingCRDTStates() {
+	if i.isOffline() {
+		return
+	}
+
+	i.pendingCRDTStatesLock.Lock()
+	defer i.pendingCRDTStatesLock.Unlock()
+
+	i.logger.Printf("Sending CRDT sync states to other nodes...\n")
+
+	for j := *baseNodeID; j < *baseNodeID+*nodeCount; j++ {
+		if j == i.nodeID {
+			continue
 		}
+		go i.syncPendingCRDTStatesWithNode(j)
 	}
-
-	// Empty the slice
-	i.pendingCRDTStates = i.pendingCRDTStates[:0]
 }
 
 func reverse[S ~[]E, E any](s S) {

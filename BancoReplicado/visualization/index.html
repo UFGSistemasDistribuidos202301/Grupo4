@@ -21,6 +21,10 @@
             animation: pulse 1s;
         }
 
+        pre.offline {
+            box-shadow: 0 0 15px red, 0 0 20px red;
+        }
+
         /* Animação para destacar o bloco */
         @keyframes pulse {
             0% { box-shadow: 0 0 5px #ccc; }
@@ -48,6 +52,8 @@
         Nó selecionado:
         <input id="node-id" value="1">
         <button id="sync-crdt-btn">SYNC</button>
+        <button id="bring-offline-btn">OFFLINE</button>
+        <button id="bring-online-btn">ONLINE</button>
       </div>
 
       <div>
@@ -92,7 +98,11 @@
 
         if (resp.status === 200) {
           document.getElementById('errors').textContent = '';
-          return await resp.json();
+          try {
+            return await resp.json();
+          } catch(err) {
+            return;
+          }
         } else {
           const text = await resp.text();
           document.getElementById('errors').textContent = 'Erro: ' + text;
@@ -119,6 +129,22 @@
       document.getElementById('sync-crdt-btn').addEventListener('click', () => {
         const nodeID = parseInt(document.getElementById('node-id').value);
         sendHTTPMessage(nodeID, 'PUT', '/crdt_sync', null).catch(console.error);
+      });
+
+      document.getElementById('bring-offline-btn').addEventListener('click', () => {
+        const nodeID = parseInt(document.getElementById('node-id').value);
+        sendHTTPMessage(nodeID, 'PUT', '/offline', null).then(() => {
+          const outputElement = document.getElementById(`output-${nodeID}`);
+          outputElement.classList.add('offline');
+        }).catch(console.error);
+      });
+
+      document.getElementById('bring-online-btn').addEventListener('click', () => {
+        const nodeID = parseInt(document.getElementById('node-id').value);
+        sendHTTPMessage(nodeID, 'PUT', '/online', null).then(() => {
+          const outputElement = document.getElementById(`output-${nodeID}`);
+          outputElement.classList.remove('offline');
+        }).catch(console.error);
       });
 
       document.getElementById('create-table-btn').addEventListener('click', () => {

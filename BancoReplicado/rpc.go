@@ -23,6 +23,10 @@ func (s *server) MergeCRDTStates(
 	ctx context.Context,
 	in *pb.MergeCRDTStatesRequest,
 ) (*pb.MergeCRDTStatesReply, error) {
+	if s.Instance.isOffline() {
+		return nil, errors.New("node is offline")
+	}
+
 	s.Instance.logger.Printf("Received CRDT sync data")
 
 	err := s.Instance.db.OpenTx(func(tx *bolt.Tx) error {
@@ -106,6 +110,6 @@ func (i *Instance) connectRPCClients() {
 
 		i.logger.Printf("RPC connected to node #%d\n", j)
 
-		i.rpcClients = append(i.rpcClients, c)
+		i.rpcClients[j] = c
 	}
 }
