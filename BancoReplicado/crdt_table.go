@@ -66,7 +66,7 @@ func (t *CRDTTable) Put(
 	}
 
 	// Queue CRDT broadcast
-	t.Instance.queueCRDTState(t.Name, docId, crdtDoc)
+	t.Instance.queueCRDTStateForAllNodes(t.Name, docId, crdtDoc)
 
 	return nil
 }
@@ -107,7 +107,7 @@ func (t *CRDTTable) Patch(
 	}
 
 	// Queue CRDT broadcast
-	t.Instance.queueCRDTState(t.Name, docId, crdtDoc)
+	t.Instance.queueCRDTStateForAllNodes(t.Name, docId, crdtDoc)
 
 	doc = make(map[string]string)
 	for k, v := range crdtDoc.Map {
@@ -150,7 +150,7 @@ func (t *CRDTTable) Delete(tx *bolt.Tx, docId string) (map[string]string, error)
 	}
 
 	// Queue CRDT broadcast
-	t.Instance.queueCRDTState(t.Name, docId, crdtDoc)
+	t.Instance.queueCRDTStateForAllNodes(t.Name, docId, crdtDoc)
 
 	doc := make(map[string]string)
 	for k, v := range crdtDoc.Map {
@@ -255,7 +255,7 @@ func (t *CRDTTable) Merge(
 	return nil
 }
 
-func (i *Instance) queueCRDTState(tableName string, docId string, m crdt.MergeableMap) {
+func (i *Instance) queueCRDTStateForAllNodes(tableName string, docId string, m crdt.MergeableMap) {
 	i.pendingCRDTStatesLock.Lock()
 	defer i.pendingCRDTStatesLock.Unlock()
 
@@ -264,13 +264,17 @@ func (i *Instance) queueCRDTState(tableName string, docId string, m crdt.Mergeab
 			continue
 		}
 
-		pendingStates := i.pendingCRDTStates[j]
-		pendingStates = append(pendingStates, &pb.DocumentCRDTState{
-			TableName: tableName,
-			DocId:     docId,
-			Map:       m.ToPB(),
+		_, err := i.QueuePendingCRDTState(context.Background(), &pb.QueuePendingCRDTStateRequest{
+			NodeID: uint64(j),
+			Document: &pb.DocumentCRDTState{
+				TableName: tableName,
+				DocId:     docId,
+				Map:       m.ToPB(),
+			},
 		})
-		i.pendingCRDTStates[j] = pendingStates
+		if err != nil {
+			i.logger.Printf("Failed to queue CRDT state: %s\n", err.Error())
+		}
 	}
 }
 
@@ -302,7 +306,22 @@ func (i *Instance) syncPendingCRDTStatesWithNode(nodeID uint) {
 	_, err := rpcClient.MergeCRDTStates(ctx, req)
 	if err != nil {
 		i.logger.Printf("Failed to send CRDT merge request to client: %s\n", err.Error())
-		return
+
+		for j := *baseNodeID; j < *baseNodeID+*nodeCount; j++ {
+			if j == i.nodeID {
+				continue
+			}
+
+			for _, state := range pendingStates {
+				_, err := i.rpcClients[j].QueuePendingCRDTState(ctx, &pb.QueuePendingCRDTStateRequest{
+					NodeID:   uint64(nodeID),
+					Document: state,
+				})
+				if err != nil {
+					i.logger.Printf("Failed to queue CRDT state on remote node: %s\n", err.Error())
+				}
+			}
+		}
 	} else {
 		// Empty the slice
 		i.pendingCRDTStates[nodeID] = pendingStates[:0]

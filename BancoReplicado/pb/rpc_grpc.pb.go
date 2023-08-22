@@ -19,7 +19,8 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Database_MergeCRDTStates_FullMethodName = "/banco_de_dados.Database/MergeCRDTStates"
+	Database_MergeCRDTStates_FullMethodName       = "/banco_de_dados.Database/MergeCRDTStates"
+	Database_QueuePendingCRDTState_FullMethodName = "/banco_de_dados.Database/QueuePendingCRDTState"
 )
 
 // DatabaseClient is the client API for Database service.
@@ -27,6 +28,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type DatabaseClient interface {
 	MergeCRDTStates(ctx context.Context, in *MergeCRDTStatesRequest, opts ...grpc.CallOption) (*MergeCRDTStatesReply, error)
+	QueuePendingCRDTState(ctx context.Context, in *QueuePendingCRDTStateRequest, opts ...grpc.CallOption) (*QueuePendingCRDTStateReply, error)
 }
 
 type databaseClient struct {
@@ -46,11 +48,21 @@ func (c *databaseClient) MergeCRDTStates(ctx context.Context, in *MergeCRDTState
 	return out, nil
 }
 
+func (c *databaseClient) QueuePendingCRDTState(ctx context.Context, in *QueuePendingCRDTStateRequest, opts ...grpc.CallOption) (*QueuePendingCRDTStateReply, error) {
+	out := new(QueuePendingCRDTStateReply)
+	err := c.cc.Invoke(ctx, Database_QueuePendingCRDTState_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DatabaseServer is the server API for Database service.
 // All implementations must embed UnimplementedDatabaseServer
 // for forward compatibility
 type DatabaseServer interface {
 	MergeCRDTStates(context.Context, *MergeCRDTStatesRequest) (*MergeCRDTStatesReply, error)
+	QueuePendingCRDTState(context.Context, *QueuePendingCRDTStateRequest) (*QueuePendingCRDTStateReply, error)
 	mustEmbedUnimplementedDatabaseServer()
 }
 
@@ -60,6 +72,9 @@ type UnimplementedDatabaseServer struct {
 
 func (UnimplementedDatabaseServer) MergeCRDTStates(context.Context, *MergeCRDTStatesRequest) (*MergeCRDTStatesReply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method MergeCRDTStates not implemented")
+}
+func (UnimplementedDatabaseServer) QueuePendingCRDTState(context.Context, *QueuePendingCRDTStateRequest) (*QueuePendingCRDTStateReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method QueuePendingCRDTState not implemented")
 }
 func (UnimplementedDatabaseServer) mustEmbedUnimplementedDatabaseServer() {}
 
@@ -92,6 +107,24 @@ func _Database_MergeCRDTStates_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Database_QueuePendingCRDTState_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueuePendingCRDTStateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabaseServer).QueuePendingCRDTState(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Database_QueuePendingCRDTState_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabaseServer).QueuePendingCRDTState(ctx, req.(*QueuePendingCRDTStateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Database_ServiceDesc is the grpc.ServiceDesc for Database service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -102,6 +135,10 @@ var Database_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "MergeCRDTStates",
 			Handler:    _Database_MergeCRDTStates_Handler,
+		},
+		{
+			MethodName: "QueuePendingCRDTState",
+			Handler:    _Database_QueuePendingCRDTState_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

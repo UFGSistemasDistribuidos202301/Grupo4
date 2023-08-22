@@ -20,6 +20,8 @@ var (
 )
 
 type Instance struct {
+	pb.UnimplementedDatabaseServer
+
 	nodeID   uint
 	httpPort uint
 	rpcPort  uint
@@ -44,6 +46,7 @@ type Instance struct {
 	// Offline simulation
 	offlineMutex sync.RWMutex
 	offline      bool
+
 }
 
 func RunInstance(nodeID uint) {

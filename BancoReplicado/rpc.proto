@@ -6,6 +6,7 @@ package banco_de_dados;
 
 service Database {
     rpc MergeCRDTStates (MergeCRDTStatesRequest) returns (MergeCRDTStatesReply) {}
+    rpc QueuePendingCRDTState (QueuePendingCRDTStateRequest) returns (QueuePendingCRDTStateReply) {}
 }
 
 message HLC {
@@ -37,3 +38,10 @@ message MergeCRDTStatesRequest {
 }
 
 message MergeCRDTStatesReply {}
+
+message QueuePendingCRDTStateRequest {
+    DocumentCRDTState document = 1;
+    uint64 nodeID = 2;
+}
+
+message QueuePendingCRDTStateReply {}

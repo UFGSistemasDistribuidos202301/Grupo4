@@ -14,28 +14,23 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-type server struct {
-	pb.UnimplementedDatabaseServer
-	Instance *Instance
-}
-
-func (s *server) MergeCRDTStates(
+func (i *Instance) MergeCRDTStates(
 	ctx context.Context,
 	in *pb.MergeCRDTStatesRequest,
 ) (*pb.MergeCRDTStatesReply, error) {
-	if s.Instance.isOffline() {
+	if i.isOffline() {
 		return nil, errors.New("node is offline")
 	}
 
-	s.Instance.logger.Printf("Received CRDT sync data")
+	i.logger.Printf("Received CRDT sync data")
 
-	err := s.Instance.db.OpenTx(func(tx *bolt.Tx) error {
+	err := i.db.OpenTx(func(tx *bolt.Tx) error {
 		for _, state := range in.Documents {
 			receivedCrdtDoc := crdt.MergeableMapFromPB(state.Map)
 
-			table, err := s.Instance.db.GetTable(tx, state.TableName)
+			table, err := i.db.GetTable(tx, state.TableName)
 			if err != nil {
-				table, err = s.Instance.db.CreateTable(tx, state.TableName, false)
+				table, err = i.db.CreateTable(tx, state.TableName, false)
 				if err != nil {
 					return err
 				}
@@ -57,8 +52,8 @@ func (s *server) MergeCRDTStates(
 			}
 
 			// Send event
-			s.Instance.visEventsChannel <- VisEvent{
-				NodeID: s.Instance.nodeID,
+			i.visEventsChannel <- VisEvent{
+				NodeID: i.nodeID,
 				Kind:   "merge_crdt_states",
 				Data:   map[string]any{state.DocId: doc},
 			}
@@ -73,15 +68,23 @@ func (s *server) MergeCRDTStates(
 	return &pb.MergeCRDTStatesReply{}, nil
 }
 
+func (i *Instance) QueuePendingCRDTState(
+	ctx context.Context,
+	in *pb.QueuePendingCRDTStateRequest,
+) (*pb.QueuePendingCRDTStateReply, error) {
+	pendingStates := i.pendingCRDTStates[uint(in.NodeID)]
+	pendingStates = append(pendingStates, in.Document)
+	i.pendingCRDTStates[uint(in.NodeID)] = pendingStates
+	return &pb.QueuePendingCRDTStateReply{}, nil
+}
+
 func (i *Instance) startRPCServer() {
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", i.rpcPort))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 	s := grpc.NewServer()
-	pb.RegisterDatabaseServer(s, &server{
-		Instance: i,
-	})
+	pb.RegisterDatabaseServer(s, i)
 	i.logger.Printf("RPC server listening at %v\n", lis.Addr())
 	if err := s.Serve(lis); err != nil {
 		i.logger.Fatalf("failed to serve: %v", err)
