@@ -8,6 +8,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/gorilla/websocket"
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -19,45 +20,53 @@ var (
 )
 
 type Instance struct {
-	NodeID   uint
-	HTTPPort uint
-	RPCPort  uint
+	nodeID   uint
+	httpPort uint
+	rpcPort  uint
 
-	Logger *log.Logger
+	logger *log.Logger
 
-	DB *Database
+	db *Database
 
 	// RPC
-	RPCClients     []pb.DatabaseClient
-	RPCClientsLock sync.Mutex
+	rpcClients     []pb.DatabaseClient
+	rpcClientsLock sync.Mutex
 
 	// CRDT
-	PendingCRDTStates     []*pb.DocumentCRDTState
-	PendingCRDTStatesLock sync.Mutex
+	pendingCRDTStates     []*pb.DocumentCRDTState
+	pendingCRDTStatesLock sync.Mutex
+
+	// WebSocket events
+	wsListeners      map[*websocket.Conn]chan<- VisEvent
+	wsListenersLock  sync.Mutex
+	visEventsChannel chan VisEvent
 }
 
 func RunInstance(nodeID uint) {
 	instance := Instance{
-		NodeID:   nodeID,
-		HTTPPort: *baseHTTPPort + nodeID,
-		RPCPort:  *baseRPCPort + nodeID,
-		Logger:   log.New(os.Stdout, fmt.Sprintf("[NODE #%d] ", nodeID), log.LstdFlags),
+		nodeID:   nodeID,
+		httpPort: *baseHTTPPort + nodeID,
+		rpcPort:  *baseRPCPort + nodeID,
+		logger:   log.New(os.Stdout, fmt.Sprintf("[NODE #%d] ", nodeID), log.LstdFlags),
+
+		wsListeners:      make(map[*websocket.Conn]chan<- VisEvent),
+		visEventsChannel: make(chan VisEvent),
 	}
 
 	instance.openDB()
 
-	go instance.startCRDTTimer()
+	// go instance.startCRDTTimer()
 	go instance.startRPCServer()
 	go instance.connectRPCClients()
 	go instance.startHTTPServer()
 }
 
 func (i *Instance) openDB() {
-	db, err := bolt.Open(fmt.Sprintf("./nodes/node_%d", i.NodeID), 0600, nil)
+	db, err := bolt.Open(fmt.Sprintf("./nodes/node_%d", i.nodeID), 0600, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
-	i.DB = &Database{db: db}
+	i.db = &Database{db: db, instance: i}
 }
 
 func main() {

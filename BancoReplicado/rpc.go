@@ -23,15 +23,15 @@ func (s *server) MergeCRDTStates(
 	ctx context.Context,
 	in *pb.MergeCRDTStatesRequest,
 ) (*pb.MergeCRDTStatesReply, error) {
-	s.Instance.Logger.Printf("Received CRDT sync data")
+	s.Instance.logger.Printf("Received CRDT sync data")
 
-	err := s.Instance.DB.OpenTx(func(tx *bolt.Tx) error {
+	err := s.Instance.db.OpenTx(func(tx *bolt.Tx) error {
 		for _, state := range in.Documents {
 			receivedCrdtDoc := crdt.MergeableMapFromPB(state.Map)
 
-			table, err := s.Instance.DB.GetTable(tx, state.TableName)
+			table, err := s.Instance.db.GetTable(tx, state.TableName)
 			if err != nil {
-				table, err = s.Instance.DB.CreateTable(tx, state.TableName, false)
+				table, err = s.Instance.db.CreateTable(tx, state.TableName, false)
 				if err != nil {
 					return err
 				}
@@ -53,8 +53,8 @@ func (s *server) MergeCRDTStates(
 			}
 
 			// Send event
-			visEventsChannel <- VisEvent{
-				NodeID: s.Instance.NodeID,
+			s.Instance.visEventsChannel <- VisEvent{
+				NodeID: s.Instance.nodeID,
 				Kind:   "merge_crdt_states",
 				Data:   map[string]any{state.DocId: doc},
 			}
@@ -70,24 +70,26 @@ func (s *server) MergeCRDTStates(
 }
 
 func (i *Instance) startRPCServer() {
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", i.RPCPort))
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", i.rpcPort))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 	s := grpc.NewServer()
-	pb.RegisterDatabaseServer(s, &server{})
-	i.Logger.Printf("RPC server listening at %v\n", lis.Addr())
+	pb.RegisterDatabaseServer(s, &server{
+		Instance: i,
+	})
+	i.logger.Printf("RPC server listening at %v\n", lis.Addr())
 	if err := s.Serve(lis); err != nil {
-		i.Logger.Fatalf("failed to serve: %v", err)
+		i.logger.Fatalf("failed to serve: %v", err)
 	}
 }
 
 func (i *Instance) connectRPCClients() {
-	i.RPCClientsLock.Lock()
-	defer i.RPCClientsLock.Unlock()
+	i.rpcClientsLock.Lock()
+	defer i.rpcClientsLock.Unlock()
 
 	for j := *baseNodeID; j < *baseNodeID+*nodeCount; j++ {
-		if j == i.NodeID {
+		if j == i.nodeID {
 			continue
 		}
 
@@ -102,8 +104,8 @@ func (i *Instance) connectRPCClients() {
 		}
 		c := pb.NewDatabaseClient(conn)
 
-		i.Logger.Printf("RPC connected to node #%d\n", j)
+		i.logger.Printf("RPC connected to node #%d\n", j)
 
-		i.RPCClients = append(i.RPCClients, c)
+		i.rpcClients = append(i.rpcClients, c)
 	}
 }

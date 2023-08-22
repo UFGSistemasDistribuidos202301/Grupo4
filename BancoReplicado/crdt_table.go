@@ -47,7 +47,8 @@ func (t *CRDTTable) Put(
 			crdtDoc = crdtDoc.Remove(key)
 		}
 	} else {
-		crdtDoc = crdt.NewMergeableMap(int(t.Instance.NodeID))
+		log.Printf("Instance: %v\n", t.Instance)
+		crdtDoc = crdt.NewMergeableMap(int(t.Instance.nodeID))
 	}
 
 	for k, v := range doc {
@@ -88,7 +89,7 @@ func (t *CRDTTable) Patch(
 		}
 		crdtDoc = crdtDoc.SetDeleted(false)
 	} else {
-		crdtDoc = crdt.NewMergeableMap(int(t.Instance.NodeID))
+		crdtDoc = crdt.NewMergeableMap(int(t.Instance.nodeID))
 	}
 
 	for k, v := range doc {
@@ -236,7 +237,7 @@ func (t *CRDTTable) Merge(
 			return err
 		}
 	} else {
-		crdtDoc = crdt.NewMergeableMap(int(t.Instance.NodeID))
+		crdtDoc = crdt.NewMergeableMap(int(t.Instance.nodeID))
 	}
 
 	crdtDoc = crdtDoc.Merge(receivedCrdtDoc)
@@ -255,10 +256,10 @@ func (t *CRDTTable) Merge(
 }
 
 func (i *Instance) queueCRDTState(tableName string, docId string, m crdt.MergeableMap) {
-	i.PendingCRDTStatesLock.Lock()
-	defer i.PendingCRDTStatesLock.Unlock()
+	i.pendingCRDTStatesLock.Lock()
+	defer i.pendingCRDTStatesLock.Unlock()
 
-	i.PendingCRDTStates = append(i.PendingCRDTStates, &pb.DocumentCRDTState{
+	i.pendingCRDTStates = append(i.pendingCRDTStates, &pb.DocumentCRDTState{
 		TableName: tableName,
 		DocId:     docId,
 		Map:       m.ToPB(),
@@ -273,32 +274,32 @@ func (i *Instance) startCRDTTimer() {
 }
 
 func (i *Instance) syncPendingCRDTStates() {
-	i.PendingCRDTStatesLock.Lock()
-	defer i.PendingCRDTStatesLock.Unlock()
+	i.pendingCRDTStatesLock.Lock()
+	defer i.pendingCRDTStatesLock.Unlock()
 
-	if len(i.PendingCRDTStates) == 0 {
+	if len(i.pendingCRDTStates) == 0 {
 		return
 	}
 
-	i.Logger.Printf("Sending CRDT sync states to other nodes...\n")
+	i.logger.Printf("Sending CRDT sync states to other nodes...\n")
 
-	reverse(i.PendingCRDTStates)
+	reverse(i.pendingCRDTStates)
 
 	ctx := context.Background()
 
 	req := &pb.MergeCRDTStatesRequest{
-		Documents: i.PendingCRDTStates,
+		Documents: i.pendingCRDTStates,
 	}
 
-	for _, client := range i.RPCClients {
+	for _, client := range i.rpcClients {
 		_, err := client.MergeCRDTStates(ctx, req)
 		if err != nil {
-			i.Logger.Printf("Failed to send CRDT merge request to client: %s\n", err.Error())
+			i.logger.Printf("Failed to send CRDT merge request to client: %s\n", err.Error())
 		}
 	}
 
 	// Empty the slice
-	i.PendingCRDTStates = i.PendingCRDTStates[:0]
+	i.pendingCRDTStates = i.pendingCRDTStates[:0]
 }
 
 func reverse[S ~[]E, E any](s S) {

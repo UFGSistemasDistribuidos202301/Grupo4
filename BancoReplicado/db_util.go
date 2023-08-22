@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 
@@ -19,7 +19,8 @@ type Table interface {
 }
 
 type Database struct {
-	db *bolt.DB
+	db       *bolt.DB
+	instance *Instance
 }
 
 func (db *Database) DeleteTable(tx *bolt.Tx, tableName string) error {
@@ -58,13 +59,15 @@ func (db *Database) CreateTable(
 
 	if strongConsistency {
 		return &RaftTable{
-			Name: tableName,
-			DB:   db.db,
+			Name:     tableName,
+			DB:       db.db,
+			Instance: db.instance,
 		}, nil
 	} else {
 		return &CRDTTable{
-			Name: tableName,
-			DB:   db.db,
+			Name:     tableName,
+			DB:       db.db,
+			Instance: db.instance,
 		}, nil
 	}
 }
@@ -86,13 +89,15 @@ func (db *Database) GetTable(
 	strongConsistency := consistencyBytes[0] == 1
 	if strongConsistency {
 		return &RaftTable{
-			Name: tableName,
-			DB:   db.db,
+			Name:     tableName,
+			DB:       db.db,
+			Instance: db.instance,
 		}, nil
 	} else {
 		return &CRDTTable{
-			Name: tableName,
-			DB:   db.db,
+			Name:     tableName,
+			DB:       db.db,
+			Instance: db.instance,
 		}, nil
 	}
 }
@@ -157,7 +162,7 @@ func writeBodyJson(w http.ResponseWriter, bodyJson any) {
 }
 
 func getBodyMap(r *http.Request) map[string]string {
-	body, err := ioutil.ReadAll(r.Body)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		log.Panic(err)
 	}

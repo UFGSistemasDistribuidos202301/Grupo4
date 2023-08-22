@@ -3,14 +3,14 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"strings"
-	"sync"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 	"github.com/gorilla/websocket"
 
 	bolt "go.etcd.io/bbolt"
@@ -26,9 +26,6 @@ var (
 	upgrader = websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool { return true },
 	}
-	wsListeners      = make(map[*websocket.Conn]chan<- VisEvent)
-	wsListenersLock  = sync.Mutex{}
-	visEventsChannel = make(chan VisEvent)
 )
 
 type TableCreationParams struct {
@@ -56,18 +53,26 @@ func fileServer(r chi.Router, path string, root http.FileSystem) {
 
 func (i *Instance) startHTTPServer() {
 	go func() {
-		for msg := range visEventsChannel {
-			wsListenersLock.Lock()
-			for _, recv := range wsListeners {
+		for msg := range i.visEventsChannel {
+			i.wsListenersLock.Lock()
+			for _, recv := range i.wsListeners {
 				recv <- msg
 			}
-			wsListenersLock.Unlock()
+			i.wsListenersLock.Unlock()
 		}
 	}()
 
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
+	r.Use(cors.Handler(cors.Options{
+		AllowOriginFunc:  func(r *http.Request, origin string) bool { return true },
+		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+		ExposedHeaders:   []string{"Link"},
+		AllowCredentials: false,
+		MaxAge:           300, // Maximum value not ignored by any of major browsers
+	}))
 
 	// Websocket endpoint
 	r.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
@@ -75,20 +80,20 @@ func (i *Instance) startHTTPServer() {
 		conn, err := upgrader.Upgrade(w, r, nil)
 
 		if err != nil {
-			i.Logger.Printf("error: %v\n", err)
+			i.logger.Printf("error: %v\n", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 		defer conn.Close()
 
 		recv := make(chan VisEvent)
-		wsListenersLock.Lock()
-		wsListeners[conn] = recv
-		wsListenersLock.Unlock()
+		i.wsListenersLock.Lock()
+		i.wsListeners[conn] = recv
+		i.wsListenersLock.Unlock()
 		defer func() {
-			wsListenersLock.Lock()
-			defer wsListenersLock.Unlock()
-			delete(wsListeners, conn)
+			i.wsListenersLock.Lock()
+			defer i.wsListenersLock.Unlock()
+			delete(i.wsListeners, conn)
 		}()
 
 		// Send all events to client until connection is closed
@@ -113,7 +118,7 @@ func (i *Instance) startHTTPServer() {
 	r.Put("/db/{tableName}", func(w http.ResponseWriter, r *http.Request) {
 		tableName := chi.URLParam(r, "tableName")
 
-		body, err := ioutil.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			log.Panic(err)
 		}
@@ -124,8 +129,8 @@ func (i *Instance) startHTTPServer() {
 			log.Panic(err)
 		}
 
-		err = i.DB.OpenTx(func(tx *bolt.Tx) error {
-			_, err := i.DB.CreateTable(tx, tableName, params.StrongConsistency)
+		err = i.db.OpenTx(func(tx *bolt.Tx) error {
+			_, err := i.db.CreateTable(tx, tableName, params.StrongConsistency)
 			if err != nil {
 				return err
 			}
@@ -137,8 +142,8 @@ func (i *Instance) startHTTPServer() {
 		}
 
 		// Send event
-		visEventsChannel <- VisEvent{
-			NodeID: i.NodeID,
+		i.visEventsChannel <- VisEvent{
+			NodeID: i.nodeID,
 			Kind:   "create_table",
 			Data:   tableName,
 		}
@@ -149,8 +154,8 @@ func (i *Instance) startHTTPServer() {
 	r.Delete("/db/{tableName}", func(w http.ResponseWriter, r *http.Request) {
 		tableName := chi.URLParam(r, "tableName")
 
-		err := i.DB.OpenTx(func(tx *bolt.Tx) error {
-			return i.DB.DeleteTable(tx, tableName)
+		err := i.db.OpenTx(func(tx *bolt.Tx) error {
+			return i.db.DeleteTable(tx, tableName)
 		})
 		if err != nil {
 			writeError(w, "could not create table: "+err.Error())
@@ -158,8 +163,8 @@ func (i *Instance) startHTTPServer() {
 		}
 
 		// Send event
-		visEventsChannel <- VisEvent{
-			NodeID: i.NodeID,
+		i.visEventsChannel <- VisEvent{
+			NodeID: i.nodeID,
 			Kind:   "delete_table",
 			Data:   tableName,
 		}
@@ -171,8 +176,8 @@ func (i *Instance) startHTTPServer() {
 		tableName := chi.URLParam(r, "tableName")
 		docId := chi.URLParam(r, "docId")
 
-		err := i.DB.OpenTx(func(tx *bolt.Tx) error {
-			table, err := i.DB.GetTable(tx, tableName)
+		err := i.db.OpenTx(func(tx *bolt.Tx) error {
+			table, err := i.db.GetTable(tx, tableName)
 			if err != nil {
 				return err
 			}
@@ -199,8 +204,8 @@ func (i *Instance) startHTTPServer() {
 		docId := chi.URLParam(r, "docId")
 		bodyMap := getBodyMap(r)
 
-		err := i.DB.OpenTx(func(tx *bolt.Tx) error {
-			table, err := i.DB.GetTable(tx, tableName)
+		err := i.db.OpenTx(func(tx *bolt.Tx) error {
+			table, err := i.db.GetTable(tx, tableName)
 			if err != nil {
 				return err
 			}
@@ -213,8 +218,8 @@ func (i *Instance) startHTTPServer() {
 			writeBodyJson(w, bodyMap)
 
 			// Send event
-			visEventsChannel <- VisEvent{
-				NodeID: i.NodeID,
+			i.visEventsChannel <- VisEvent{
+				NodeID: i.nodeID,
 				Kind:   "put_document",
 				Data:   map[string]any{docId: bodyMap},
 			}
@@ -239,8 +244,8 @@ func (i *Instance) startHTTPServer() {
 		docId := chi.URLParam(r, "docId")
 		bodyMap := getBodyMap(r)
 
-		err := i.DB.OpenTx(func(tx *bolt.Tx) error {
-			table, err := i.DB.GetTable(tx, tableName)
+		err := i.db.OpenTx(func(tx *bolt.Tx) error {
+			table, err := i.db.GetTable(tx, tableName)
 			if err != nil {
 				return err
 			}
@@ -253,8 +258,8 @@ func (i *Instance) startHTTPServer() {
 			writeBodyJson(w, newDoc)
 
 			// Send event
-			visEventsChannel <- VisEvent{
-				NodeID: i.NodeID,
+			i.visEventsChannel <- VisEvent{
+				NodeID: i.nodeID,
 				Kind:   "patch_document",
 				Data:   map[string]any{docId: newDoc},
 			}
@@ -274,8 +279,8 @@ func (i *Instance) startHTTPServer() {
 		tableName := chi.URLParam(r, "tableName")
 		docId := chi.URLParam(r, "docId")
 
-		err := i.DB.OpenTx(func(tx *bolt.Tx) error {
-			table, err := i.DB.GetTable(tx, tableName)
+		err := i.db.OpenTx(func(tx *bolt.Tx) error {
+			table, err := i.db.GetTable(tx, tableName)
 			if err != nil {
 				return err
 			}
@@ -293,8 +298,8 @@ func (i *Instance) startHTTPServer() {
 		}
 
 		// Send event
-		visEventsChannel <- VisEvent{
-			NodeID: i.NodeID,
+		i.visEventsChannel <- VisEvent{
+			NodeID: i.nodeID,
 			Kind:   "delete_document",
 			Data:   docId,
 		}
@@ -307,8 +312,8 @@ func (i *Instance) startHTTPServer() {
 
 		tableValues := map[string]map[string]string{}
 
-		err := i.DB.OpenTx(func(tx *bolt.Tx) error {
-			table, err := i.DB.GetTable(tx, tableName)
+		err := i.db.OpenTx(func(tx *bolt.Tx) error {
+			table, err := i.db.GetTable(tx, tableName)
 			if err != nil {
 				return err
 			}
@@ -324,13 +329,6 @@ func (i *Instance) startHTTPServer() {
 		}
 
 		writeBodyJson(w, tableValues)
-
-		// Send event
-		visEventsChannel <- VisEvent{
-			NodeID: i.NodeID,
-			Kind:   "get_table_documents",
-			Data:   map[string]any{tableName: tableValues},
-		}
 	})
 
 	// GET /
@@ -338,8 +336,8 @@ func (i *Instance) startHTTPServer() {
 	r.Get("/db", func(w http.ResponseWriter, r *http.Request) {
 		dbValues := map[string]map[string]map[string]string{}
 
-		err := i.DB.OpenTx(func(tx *bolt.Tx) error {
-			return i.DB.ForEach(tx, func(tableName string, table Table) error {
+		err := i.db.OpenTx(func(tx *bolt.Tx) error {
+			return i.db.ForEach(tx, func(tableName string, table Table) error {
 				if _, ok := dbValues[tableName]; !ok {
 					dbValues[tableName] = map[string]map[string]string{}
 				}
@@ -355,17 +353,13 @@ func (i *Instance) startHTTPServer() {
 		}
 
 		writeBodyJson(w, dbValues)
-
-		// Send event
-		visEventsChannel <- VisEvent{
-			NodeID: i.NodeID,
-			Kind:   "get_all_docs",
-			Data:   dbValues,
-		}
-
 	})
 
-	addr := fmt.Sprintf(":%d", i.HTTPPort)
-	i.Logger.Printf("HTTP server listening at %s\n", addr)
+	r.Put("/crdt_sync", func(w http.ResponseWriter, r *http.Request) {
+		i.syncPendingCRDTStates()
+	})
+
+	addr := fmt.Sprintf(":%d", i.httpPort)
+	i.logger.Printf("HTTP server listening at %s\n", addr)
 	http.ListenAndServe(addr, r)
 }

@@ -12,6 +12,8 @@ import (
 type RaftTable struct {
 	DB   *bolt.DB
 	Name string
+
+	Instance *Instance
 }
 
 func (t *RaftTable) Put(tx *bolt.Tx, docId string, doc map[string]string) error {
