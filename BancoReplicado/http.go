@@ -116,7 +116,8 @@ func (i *Instance) startHTTPServer() {
 	// Cria uma tabela (indicando se será eventual ou forte)
 	r.Put("/db/{tableName}", func(w http.ResponseWriter, r *http.Request) {
 		if i.isOffline() {
-			i.logger.Panic("Node is offline")
+			writeError(w, "node is offline")
+			return
 		}
 
 		tableName := chi.URLParam(r, "tableName")
@@ -156,7 +157,8 @@ func (i *Instance) startHTTPServer() {
 	// Remove uma tabela
 	r.Delete("/db/{tableName}", func(w http.ResponseWriter, r *http.Request) {
 		if i.isOffline() {
-			i.logger.Panic("Node is offline")
+			writeError(w, "node is offline")
+			return
 		}
 
 		tableName := chi.URLParam(r, "tableName")
@@ -181,7 +183,8 @@ func (i *Instance) startHTTPServer() {
 	// Retorna o mapa de chaves e valores de um documento
 	r.Get("/db/{tableName}/{docId}", func(w http.ResponseWriter, r *http.Request) {
 		if i.isOffline() {
-			i.logger.Panic("Node is offline")
+			writeError(w, "node is offline")
+			return
 		}
 
 		tableName := chi.URLParam(r, "tableName")
@@ -212,7 +215,8 @@ func (i *Instance) startHTTPServer() {
 	// chaves não especificadas nesta chamada
 	r.Put("/db/{tableName}/{docId}", func(w http.ResponseWriter, r *http.Request) {
 		if i.isOffline() {
-			i.logger.Panic("Node is offline")
+			writeError(w, "node is offline")
+			return
 		}
 
 		tableName := chi.URLParam(r, "tableName")
@@ -256,7 +260,8 @@ func (i *Instance) startHTTPServer() {
 	// Depois: {"chave1": "valor1", "chave2": "asdasdasdas", "chave3": "valor3"}
 	r.Patch("/db/{tableName}/{docId}", func(w http.ResponseWriter, r *http.Request) {
 		if i.isOffline() {
-			i.logger.Panic("Node is offline")
+			writeError(w, "node is offline")
+			return
 		}
 
 		tableName := chi.URLParam(r, "tableName")
@@ -296,7 +301,8 @@ func (i *Instance) startHTTPServer() {
 	// Remove um documento
 	r.Delete("/db/{tableName}/{docId}", func(w http.ResponseWriter, r *http.Request) {
 		if i.isOffline() {
-			i.logger.Panic("Node is offline")
+			writeError(w, "node is offline")
+			return
 		}
 
 		tableName := chi.URLParam(r, "tableName")
@@ -332,7 +338,8 @@ func (i *Instance) startHTTPServer() {
 	// Retorna todos os documentos de uma tabela
 	r.Get("/db/{tableName}", func(w http.ResponseWriter, r *http.Request) {
 		if i.isOffline() {
-			i.logger.Panic("Node is offline")
+			writeError(w, "node is offline")
+			return
 		}
 
 		tableName := chi.URLParam(r, "tableName")
@@ -362,7 +369,8 @@ func (i *Instance) startHTTPServer() {
 	// Retorna todos os documentos de todas as tabelas
 	r.Get("/db", func(w http.ResponseWriter, r *http.Request) {
 		if i.isOffline() {
-			i.logger.Panic("Node is offline")
+			writeError(w, "node is offline")
+			return
 		}
 
 		dbValues := map[string]map[string]map[string]string{}
@@ -388,7 +396,8 @@ func (i *Instance) startHTTPServer() {
 
 	r.Put("/crdt_sync", func(w http.ResponseWriter, r *http.Request) {
 		if i.isOffline() {
-			i.logger.Panic("Node is offline")
+			writeError(w, "node is offline")
+			return
 		}
 
 		i.syncPendingCRDTStates()

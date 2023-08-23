@@ -4,7 +4,7 @@
     <title>DB Sync Visualization</title>
     <style>
 /* Estilo para os elementos <pre> que exibem os dados JSON */
-        pre {
+        .output-wrapper {
             width: calc(20% - 20px);
             float: left;
             margin: 10px;
@@ -17,11 +17,11 @@
         }
 
         /* Estilo para realçar o bloco quando uma mensagem for recebida */
-        pre.received-message {
+        .received-message {
             animation: pulse 1s;
         }
 
-        pre.offline {
+        .offline {
             box-shadow: 0 0 15px red, 0 0 20px red;
         }
 
@@ -92,24 +92,28 @@
           body = JSON.stringify(message);
         }
 
-        const resp = await fetch('http://localhost:'+port+path, {
-          method: method,
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: body,
-        });
+        try {
+          const resp = await fetch('http://localhost:'+port+path, {
+            method: method,
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: body,
+          });
 
-        if (resp.status === 200) {
-          document.getElementById('errors').textContent = '';
-          try {
-            return await resp.json();
-          } catch(err) {
-            return;
+          if (resp.status === 200) {
+            // document.getElementById('errors').textContent = '';
+            try {
+              return await resp.json();
+            } catch(err) {
+              return;
+            }
+          } else {
+            const data = await resp.json();
+            document.getElementById('errors').textContent = 'Erro: ' + data.message;
           }
-        } else {
-          const text = await resp.text();
-          document.getElementById('errors').textContent = 'Erro: ' + text;
+        } catch (err) {
+            document.getElementById('errors').textContent = 'Erro: ' + err;
         }
       }
 
@@ -120,9 +124,21 @@
         document.getElementById('control-form').hidden = false;
 
         for (let i = 1; i < (1+numNodes); i++) {
+          const outputWrapperElement = document.createElement('div');
+          outputWrapperElement.id = `output-wrapper-${i}`;
+
+          const headerElement = document.createElement('div');
+          headerElement.id = `header-${i}`;
+          headerElement.innerHTML = `Node ${i}`;
+
           const outputElement = document.createElement('pre');
           outputElement.id = `output-${i}`;
-          document.getElementById('outputs').appendChild(outputElement);
+
+          outputWrapperElement.appendChild(headerElement);
+          outputWrapperElement.appendChild(outputElement);
+          outputWrapperElement.classList.add('output-wrapper');
+
+          document.getElementById('outputs').appendChild(outputWrapperElement);
         }
 
         for (let i = 1; i < (1+numNodes); i++) {
@@ -152,7 +168,7 @@
       document.getElementById('bring-offline-btn').addEventListener('click', () => {
         const nodeID = parseInt(document.getElementById('node-id').value);
         sendHTTPMessage(nodeID, 'PUT', '/offline', null).then(() => {
-          const outputElement = document.getElementById(`output-${nodeID}`);
+          const outputElement = document.getElementById(`output-wrapper-${nodeID}`);
           outputElement.classList.add('offline');
         }).catch(console.error);
       });
@@ -160,8 +176,10 @@
       document.getElementById('bring-online-btn').addEventListener('click', () => {
         const nodeID = parseInt(document.getElementById('node-id').value);
         sendHTTPMessage(nodeID, 'PUT', '/online', null).then(() => {
-          const outputElement = document.getElementById(`output-${nodeID}`);
+          const outputElement = document.getElementById(`output-wrapper-${nodeID}`);
           outputElement.classList.remove('offline');
+
+          refreshState(nodeID);
         }).catch(console.error);
       });
 
@@ -204,7 +222,7 @@
         sendHTTPMessage(nodeID, 'GET', '/db', null).then((data) => {
           const outputElement = document.getElementById(`output-${nodeID}`);
           const formattedJson = JSON.stringify(data, null, 2);
-          outputElement.textContent = `Node ${nodeID}\n`+formattedJson;
+          outputElement.textContent = formattedJson;
         }).catch(console.error);
       }
 
@@ -218,18 +236,19 @@
         ws.onmessage = (event) => {
           console.log(`Received message from node ${nodeID}: ${event.data}`);
           const jsonData = JSON.parse(event.data);
-          const formattedJson = JSON.stringify(jsonData, null, 2);
-          const outputElement = document.getElementById(`output-${nodeID}`);
+          if (jsonData.kind === "timer") {
+            const headerElement = document.getElementById(`header-${nodeID}`);
+            headerElement.innerHTML = `Node ${nodeID} (${jsonData.data}s)`;
+          } else {
+            const outputWrapperElement = document.getElementById(`output-wrapper-${nodeID}`);
+            outputWrapperElement.classList.add('received-message');
 
-          // Adicionar a classe para destacar o bloco ao receber uma mensagem
-          outputElement.classList.add('received-message');
+            refreshState(nodeID);
 
-          refreshState(nodeID);
-
-          // Remover a classe após alguns segundos para remover o destaque
-          setTimeout(() => {
-            outputElement.classList.remove('received-message');
-          }, 1000);
+            setTimeout(() => {
+              outputWrapperElement.classList.remove('received-message');
+            }, 1000);
+          }
         };
 
         // Adicionar a conexão WebSocket ao array de conexões

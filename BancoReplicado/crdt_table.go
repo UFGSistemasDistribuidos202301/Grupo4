@@ -281,10 +281,23 @@ func (i *Instance) queueCRDTStateForAllNodes(tableName string, docId string, m c
 }
 
 func (i *Instance) startCRDTTimer() {
+	counter := 10
 	for {
-		time.Sleep(time.Second * 10)
-		if i.isCRDTTimerEnabled() {
-			i.syncPendingCRDTStates()
+		time.Sleep(time.Second * 1)
+
+		if !i.isOffline() && i.isCRDTTimerEnabled() {
+			counter -= 1
+
+			if counter <= 0 {
+				counter = 10
+				i.syncPendingCRDTStates()
+			}
+
+			i.visEventsChannel <- VisEvent{
+				NodeID: i.nodeID,
+				Kind:   "timer",
+				Data:   counter,
+			}
 		}
 	}
 }
@@ -341,6 +354,8 @@ func (i *Instance) syncPendingCRDTStatesWithNode(nodeID uint) {
 		return
 	}
 
+	i.flushPendingCRDTStatesForNode(nodeID)
+
 	ctx := context.Background()
 
 	req := &pb.MergeCRDTStatesRequest{
@@ -362,16 +377,18 @@ func (i *Instance) syncPendingCRDTStatesWithNode(nodeID uint) {
 
 		for j := *baseNodeID; j < *baseNodeID+*nodeCount; j++ {
 			if j == i.nodeID {
-				continue
+				i.QueuePendingCRDTStates(ctx, &pb.QueuePendingCRDTStatesRequest{
+					DestNodeID: uint64(nodeID),
+					Documents:  retries,
+				})
+			} else {
+				i.rpcClients[j].QueuePendingCRDTStates(ctx, &pb.QueuePendingCRDTStatesRequest{
+					DestNodeID: uint64(nodeID),
+					Documents:  retries,
+				})
 			}
-
-			i.rpcClients[j].QueuePendingCRDTStates(ctx, &pb.QueuePendingCRDTStatesRequest{
-				DestNodeID: uint64(nodeID),
-				Documents:  retries,
-			})
 		}
 	} else {
-		i.flushPendingCRDTStatesForNode(nodeID)
 		i.logger.Printf("Sent CRDT merge request to node %d\n", nodeID)
 	}
 }
