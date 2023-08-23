@@ -6,11 +6,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"strings"
 	"time"
 
+	"go.etcd.io/bbolt"
 	bolt "go.etcd.io/bbolt"
+	"google.golang.org/protobuf/proto"
 )
 
 type CRDTTable struct {
@@ -47,7 +50,6 @@ func (t *CRDTTable) Put(
 			crdtDoc = crdtDoc.Remove(key)
 		}
 	} else {
-		log.Printf("Instance: %v\n", t.Instance)
 		crdtDoc = crdt.NewMergeableMap(int(t.Instance.nodeID))
 	}
 
@@ -66,7 +68,7 @@ func (t *CRDTTable) Put(
 	}
 
 	// Queue CRDT broadcast
-	t.Instance.queueCRDTStateForAllNodes(t.Name, docId, crdtDoc)
+	go t.Instance.queueCRDTStateForAllNodes(t.Name, docId, crdtDoc)
 
 	return nil
 }
@@ -107,7 +109,7 @@ func (t *CRDTTable) Patch(
 	}
 
 	// Queue CRDT broadcast
-	t.Instance.queueCRDTStateForAllNodes(t.Name, docId, crdtDoc)
+	go t.Instance.queueCRDTStateForAllNodes(t.Name, docId, crdtDoc)
 
 	doc = make(map[string]string)
 	for k, v := range crdtDoc.Map {
@@ -150,7 +152,7 @@ func (t *CRDTTable) Delete(tx *bolt.Tx, docId string) (map[string]string, error)
 	}
 
 	// Queue CRDT broadcast
-	t.Instance.queueCRDTStateForAllNodes(t.Name, docId, crdtDoc)
+	go t.Instance.queueCRDTStateForAllNodes(t.Name, docId, crdtDoc)
 
 	doc := make(map[string]string)
 	for k, v := range crdtDoc.Map {
@@ -256,16 +258,13 @@ func (t *CRDTTable) Merge(
 }
 
 func (i *Instance) queueCRDTStateForAllNodes(tableName string, docId string, m crdt.MergeableMap) {
-	i.pendingCRDTStatesLock.Lock()
-	defer i.pendingCRDTStatesLock.Unlock()
-
 	for j := *baseNodeID; j < *baseNodeID+*nodeCount; j++ {
 		if j == i.nodeID {
 			continue
 		}
 
 		_, err := i.QueuePendingCRDTStates(context.Background(), &pb.QueuePendingCRDTStatesRequest{
-			DestNodeID:   uint64(j),
+			DestNodeID: uint64(j),
 			Documents: []*pb.DocumentCRDTState{
 				{
 					TableName: tableName,
@@ -290,11 +289,54 @@ func (i *Instance) startCRDTTimer() {
 	}
 }
 
-func (i *Instance) syncPendingCRDTStatesWithNode(nodeID uint) {
-	i.pendingCRDTStatesLock.Lock()
-	defer i.pendingCRDTStatesLock.Unlock()
+func (i *Instance) getPendingCRDTStatesForNode(nodeID uint) []*pb.DocumentCRDTState {
+	bucketName := []byte(fmt.Sprintf("__crdt_pending_states_%d", nodeID))
 
-	pendingStates := i.pendingCRDTStates[nodeID]
+	var pendingStates []*pb.DocumentCRDTState
+	err := i.db.OpenReadOnlyTx(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(bucketName)
+		if bucket == nil {
+			return nil
+		}
+
+		bucket.ForEach(func(k, v []byte) error {
+			state := &pb.DocumentCRDTState{}
+			err := proto.Unmarshal(k, state)
+			if err != nil {
+				return err
+			}
+			pendingStates = append(pendingStates, state)
+			return nil
+		})
+
+		return nil
+	})
+	if err != nil {
+		i.logger.Printf("Failed to get pending CRDT states: %s\n", err.Error())
+		return nil
+	}
+	return pendingStates
+}
+
+func (i *Instance) flushPendingCRDTStatesForNode(nodeID uint) error {
+	bucketName := []byte(fmt.Sprintf("__crdt_pending_states_%d", nodeID))
+
+	err := i.db.OpenTx(func(tx *bolt.Tx) error {
+		err := tx.DeleteBucket(bucketName)
+		if err != bbolt.ErrBucketNotFound {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		i.logger.Printf("Failed to flush pending CRDT states: %s\n", err.Error())
+		return err
+	}
+	return nil
+}
+
+func (i *Instance) syncPendingCRDTStatesWithNode(nodeID uint) {
+	pendingStates := i.getPendingCRDTStatesForNode(nodeID)
 	if len(pendingStates) == 0 {
 		return
 	}
@@ -308,7 +350,7 @@ func (i *Instance) syncPendingCRDTStatesWithNode(nodeID uint) {
 	rpcClient := i.rpcClients[nodeID]
 	_, err := rpcClient.MergeCRDTStates(ctx, req)
 	if err != nil {
-		i.logger.Printf("Failed to send CRDT merge request to client: %s (pending states = %d)\n", err.Error(), len(pendingStates))
+		i.logger.Printf("Failed to send CRDT merge request to node %d: %s (pending states = %d)\n", nodeID, err.Error(), len(pendingStates))
 
 		retries := []*pb.DocumentCRDTState{}
 		for _, state := range pendingStates {
@@ -324,13 +366,12 @@ func (i *Instance) syncPendingCRDTStatesWithNode(nodeID uint) {
 			}
 
 			i.rpcClients[j].QueuePendingCRDTStates(ctx, &pb.QueuePendingCRDTStatesRequest{
-				DestNodeID:   uint64(nodeID),
-				Documents:    retries,
+				DestNodeID: uint64(nodeID),
+				Documents:  retries,
 			})
 		}
 	} else {
-		// Empty the slice
-		i.pendingCRDTStates[nodeID] = pendingStates[:0]
+		i.flushPendingCRDTStatesForNode(nodeID)
 		i.logger.Printf("Sent CRDT merge request to node %d\n", nodeID)
 	}
 }
@@ -339,9 +380,6 @@ func (i *Instance) syncPendingCRDTStates() {
 	if i.isOffline() {
 		return
 	}
-
-	i.pendingCRDTStatesLock.Lock()
-	defer i.pendingCRDTStatesLock.Unlock()
 
 	i.logger.Printf("Sending CRDT sync states to other nodes...\n")
 

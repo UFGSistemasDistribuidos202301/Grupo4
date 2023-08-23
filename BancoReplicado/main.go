@@ -35,8 +35,6 @@ type Instance struct {
 	rpcClientsLock sync.Mutex
 
 	// CRDT
-	pendingCRDTStates     map[uint][]*pb.DocumentCRDTState
-	pendingCRDTStatesLock sync.Mutex
 	timerDisabledMutex sync.RWMutex
 	timerDisabled      bool
 
@@ -59,7 +57,6 @@ func RunInstance(nodeID uint) {
 		logger:   log.New(os.Stdout, fmt.Sprintf("[NODE #%d] ", nodeID), log.LstdFlags),
 
 		rpcClients:        make(map[uint]pb.DatabaseClient),
-		pendingCRDTStates: make(map[uint][]*pb.DocumentCRDTState),
 
 		wsListeners:      make(map[*websocket.Conn]chan<- VisEvent),
 		visEventsChannel: make(chan VisEvent),

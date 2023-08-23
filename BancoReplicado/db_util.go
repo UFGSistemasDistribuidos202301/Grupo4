@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 
 	bolt "go.etcd.io/bbolt"
 )
@@ -108,6 +109,9 @@ func (db *Database) ForEach(
 ) error {
 	return tx.ForEach(func(name []byte, bucket *bolt.Bucket) error {
 		tableName := string(name)
+		if strings.HasPrefix(tableName, "__") {
+			return nil
+		}
 
 		consistencyBytes := bucket.Get([]byte("__consistency"))
 		if consistencyBytes == nil || len(consistencyBytes) != 1 {
@@ -133,6 +137,10 @@ func (db *Database) ForEach(
 
 func (db *Database) OpenTx(callback func(tx *bolt.Tx) error) error {
 	return db.db.Update(callback)
+}
+
+func (db *Database) OpenReadOnlyTx(callback func(tx *bolt.Tx) error) error {
+	return db.db.View(callback)
 }
 
 func writeError(w http.ResponseWriter, msg string) {

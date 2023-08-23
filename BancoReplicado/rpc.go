@@ -12,6 +12,7 @@ import (
 	bolt "go.etcd.io/bbolt"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/proto"
 )
 
 func (i *Instance) MergeCRDTStates(
@@ -72,9 +73,29 @@ func (i *Instance) QueuePendingCRDTStates(
 	ctx context.Context,
 	in *pb.QueuePendingCRDTStatesRequest,
 ) (*pb.QueuePendingCRDTStatesReply, error) {
-	pendingStates := i.pendingCRDTStates[uint(in.DestNodeID)]
-	pendingStates = append(pendingStates, in.Documents...)
-	i.pendingCRDTStates[uint(in.DestNodeID)] = pendingStates
+	bucketName := []byte(fmt.Sprintf("__crdt_pending_states_%d", in.DestNodeID))
+
+	err := i.db.OpenTx(func(tx *bolt.Tx) error {
+		bucket, err := tx.CreateBucketIfNotExists(bucketName)
+		if err != nil {
+			return err
+		}
+
+		for _, state := range in.Documents {
+			k, err := proto.Marshal(state)
+			if err != nil {
+				return err
+			}
+			bucket.Put(k, []byte{})
+		}
+
+		return nil
+	})
+	if err != nil {
+		i.logger.Printf("Failed to get pending CRDT states: %s\n", err.Error())
+		return nil, err
+	}
+
 	return &pb.QueuePendingCRDTStatesReply{}, nil
 }
 
