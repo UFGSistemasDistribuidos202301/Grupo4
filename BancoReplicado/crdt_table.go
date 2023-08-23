@@ -264,12 +264,15 @@ func (i *Instance) queueCRDTStateForAllNodes(tableName string, docId string, m c
 			continue
 		}
 
-		_, err := i.QueuePendingCRDTState(context.Background(), &pb.QueuePendingCRDTStateRequest{
-			NodeID: uint64(j),
-			Document: &pb.DocumentCRDTState{
-				TableName: tableName,
-				DocId:     docId,
-				Map:       m.ToPB(),
+		_, err := i.QueuePendingCRDTStates(context.Background(), &pb.QueuePendingCRDTStatesRequest{
+			DestNodeID:   uint64(j),
+			Documents: []*pb.DocumentCRDTState{
+				{
+					TableName: tableName,
+					DocId:     docId,
+					Map:       m.ToPB(),
+					IsRetry:   false,
+				},
 			},
 		})
 		if err != nil {
@@ -296,8 +299,6 @@ func (i *Instance) syncPendingCRDTStatesWithNode(nodeID uint) {
 		return
 	}
 
-	reverse(pendingStates)
-
 	ctx := context.Background()
 
 	req := &pb.MergeCRDTStatesRequest{
@@ -307,26 +308,30 @@ func (i *Instance) syncPendingCRDTStatesWithNode(nodeID uint) {
 	rpcClient := i.rpcClients[nodeID]
 	_, err := rpcClient.MergeCRDTStates(ctx, req)
 	if err != nil {
-		i.logger.Printf("Failed to send CRDT merge request to client: %s\n", err.Error())
+		i.logger.Printf("Failed to send CRDT merge request to client: %s (pending states = %d)\n", err.Error(), len(pendingStates))
+
+		retries := []*pb.DocumentCRDTState{}
+		for _, state := range pendingStates {
+			if !state.IsRetry {
+				retries = append(retries, state)
+				state.IsRetry = true
+			}
+		}
 
 		for j := *baseNodeID; j < *baseNodeID+*nodeCount; j++ {
 			if j == i.nodeID {
 				continue
 			}
 
-			for _, state := range pendingStates {
-				_, err := i.rpcClients[j].QueuePendingCRDTState(ctx, &pb.QueuePendingCRDTStateRequest{
-					NodeID:   uint64(nodeID),
-					Document: state,
-				})
-				if err != nil {
-					i.logger.Printf("Failed to queue CRDT state on remote node: %s\n", err.Error())
-				}
-			}
+			i.rpcClients[j].QueuePendingCRDTStates(ctx, &pb.QueuePendingCRDTStatesRequest{
+				DestNodeID:   uint64(nodeID),
+				Documents:    retries,
+			})
 		}
 	} else {
 		// Empty the slice
 		i.pendingCRDTStates[nodeID] = pendingStates[:0]
+		i.logger.Printf("Sent CRDT merge request to node %d\n", nodeID)
 	}
 }
 

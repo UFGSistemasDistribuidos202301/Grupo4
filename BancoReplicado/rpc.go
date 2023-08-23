@@ -68,14 +68,14 @@ func (i *Instance) MergeCRDTStates(
 	return &pb.MergeCRDTStatesReply{}, nil
 }
 
-func (i *Instance) QueuePendingCRDTState(
+func (i *Instance) QueuePendingCRDTStates(
 	ctx context.Context,
-	in *pb.QueuePendingCRDTStateRequest,
-) (*pb.QueuePendingCRDTStateReply, error) {
-	pendingStates := i.pendingCRDTStates[uint(in.NodeID)]
-	pendingStates = append(pendingStates, in.Document)
-	i.pendingCRDTStates[uint(in.NodeID)] = pendingStates
-	return &pb.QueuePendingCRDTStateReply{}, nil
+	in *pb.QueuePendingCRDTStatesRequest,
+) (*pb.QueuePendingCRDTStatesReply, error) {
+	pendingStates := i.pendingCRDTStates[uint(in.DestNodeID)]
+	pendingStates = append(pendingStates, in.Documents...)
+	i.pendingCRDTStates[uint(in.DestNodeID)] = pendingStates
+	return &pb.QueuePendingCRDTStatesReply{}, nil
 }
 
 func (i *Instance) startRPCServer() {

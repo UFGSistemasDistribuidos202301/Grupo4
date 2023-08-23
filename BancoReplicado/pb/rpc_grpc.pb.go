@@ -19,8 +19,8 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Database_MergeCRDTStates_FullMethodName       = "/banco_de_dados.Database/MergeCRDTStates"
-	Database_QueuePendingCRDTState_FullMethodName = "/banco_de_dados.Database/QueuePendingCRDTState"
+	Database_MergeCRDTStates_FullMethodName        = "/banco_de_dados.Database/MergeCRDTStates"
+	Database_QueuePendingCRDTStates_FullMethodName = "/banco_de_dados.Database/QueuePendingCRDTStates"
 )
 
 // DatabaseClient is the client API for Database service.
@@ -28,7 +28,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type DatabaseClient interface {
 	MergeCRDTStates(ctx context.Context, in *MergeCRDTStatesRequest, opts ...grpc.CallOption) (*MergeCRDTStatesReply, error)
-	QueuePendingCRDTState(ctx context.Context, in *QueuePendingCRDTStateRequest, opts ...grpc.CallOption) (*QueuePendingCRDTStateReply, error)
+	QueuePendingCRDTStates(ctx context.Context, in *QueuePendingCRDTStatesRequest, opts ...grpc.CallOption) (*QueuePendingCRDTStatesReply, error)
 }
 
 type databaseClient struct {
@@ -48,9 +48,9 @@ func (c *databaseClient) MergeCRDTStates(ctx context.Context, in *MergeCRDTState
 	return out, nil
 }
 
-func (c *databaseClient) QueuePendingCRDTState(ctx context.Context, in *QueuePendingCRDTStateRequest, opts ...grpc.CallOption) (*QueuePendingCRDTStateReply, error) {
-	out := new(QueuePendingCRDTStateReply)
-	err := c.cc.Invoke(ctx, Database_QueuePendingCRDTState_FullMethodName, in, out, opts...)
+func (c *databaseClient) QueuePendingCRDTStates(ctx context.Context, in *QueuePendingCRDTStatesRequest, opts ...grpc.CallOption) (*QueuePendingCRDTStatesReply, error) {
+	out := new(QueuePendingCRDTStatesReply)
+	err := c.cc.Invoke(ctx, Database_QueuePendingCRDTStates_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +62,7 @@ func (c *databaseClient) QueuePendingCRDTState(ctx context.Context, in *QueuePen
 // for forward compatibility
 type DatabaseServer interface {
 	MergeCRDTStates(context.Context, *MergeCRDTStatesRequest) (*MergeCRDTStatesReply, error)
-	QueuePendingCRDTState(context.Context, *QueuePendingCRDTStateRequest) (*QueuePendingCRDTStateReply, error)
+	QueuePendingCRDTStates(context.Context, *QueuePendingCRDTStatesRequest) (*QueuePendingCRDTStatesReply, error)
 	mustEmbedUnimplementedDatabaseServer()
 }
 
@@ -73,8 +73,8 @@ type UnimplementedDatabaseServer struct {
 func (UnimplementedDatabaseServer) MergeCRDTStates(context.Context, *MergeCRDTStatesRequest) (*MergeCRDTStatesReply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method MergeCRDTStates not implemented")
 }
-func (UnimplementedDatabaseServer) QueuePendingCRDTState(context.Context, *QueuePendingCRDTStateRequest) (*QueuePendingCRDTStateReply, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method QueuePendingCRDTState not implemented")
+func (UnimplementedDatabaseServer) QueuePendingCRDTStates(context.Context, *QueuePendingCRDTStatesRequest) (*QueuePendingCRDTStatesReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method QueuePendingCRDTStates not implemented")
 }
 func (UnimplementedDatabaseServer) mustEmbedUnimplementedDatabaseServer() {}
 
@@ -107,20 +107,20 @@ func _Database_MergeCRDTStates_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Database_QueuePendingCRDTState_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(QueuePendingCRDTStateRequest)
+func _Database_QueuePendingCRDTStates_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueuePendingCRDTStatesRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(DatabaseServer).QueuePendingCRDTState(ctx, in)
+		return srv.(DatabaseServer).QueuePendingCRDTStates(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Database_QueuePendingCRDTState_FullMethodName,
+		FullMethod: Database_QueuePendingCRDTStates_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DatabaseServer).QueuePendingCRDTState(ctx, req.(*QueuePendingCRDTStateRequest))
+		return srv.(DatabaseServer).QueuePendingCRDTStates(ctx, req.(*QueuePendingCRDTStatesRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -137,8 +137,8 @@ var Database_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Database_MergeCRDTStates_Handler,
 		},
 		{
-			MethodName: "QueuePendingCRDTState",
-			Handler:    _Database_QueuePendingCRDTState_Handler,
+			MethodName: "QueuePendingCRDTStates",
+			Handler:    _Database_QueuePendingCRDTStates_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
