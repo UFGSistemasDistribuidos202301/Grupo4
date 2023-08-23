@@ -37,6 +37,8 @@ type Instance struct {
 	// CRDT
 	pendingCRDTStates     map[uint][]*pb.DocumentCRDTState
 	pendingCRDTStatesLock sync.Mutex
+	timerDisabledMutex sync.RWMutex
+	timerDisabled      bool
 
 	// WebSocket events
 	wsListeners      map[*websocket.Conn]chan<- VisEvent
@@ -65,7 +67,7 @@ func RunInstance(nodeID uint) {
 
 	instance.openDB()
 
-	// go instance.startCRDTTimer()
+	go instance.startCRDTTimer()
 	go instance.startRPCServer()
 	go instance.connectRPCClients()
 	go instance.startHTTPServer()
@@ -84,6 +86,13 @@ func (i *Instance) isOffline() bool {
 	offline := i.offline
 	i.offlineMutex.RUnlock()
 	return offline
+}
+
+func (i *Instance) isCRDTTimerEnabled() bool {
+	i.timerDisabledMutex.RLock()
+	disabled := i.timerDisabled
+	i.timerDisabledMutex.RUnlock()
+	return !disabled
 }
 
 func main() {

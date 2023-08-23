@@ -281,7 +281,9 @@ func (i *Instance) queueCRDTStateForAllNodes(tableName string, docId string, m c
 func (i *Instance) startCRDTTimer() {
 	for {
 		time.Sleep(time.Second * 10)
-		i.syncPendingCRDTStates()
+		if i.isCRDTTimerEnabled() {
+			i.syncPendingCRDTStates()
+		}
 	}
 }
 

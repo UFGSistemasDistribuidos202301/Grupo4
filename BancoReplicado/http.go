@@ -407,6 +407,18 @@ func (i *Instance) startHTTPServer() {
 		i.offlineMutex.Unlock()
 	})
 
+	r.Put("/timer_enable", func(w http.ResponseWriter, r *http.Request) {
+		i.timerDisabledMutex.Lock()
+		i.timerDisabled = false
+		i.timerDisabledMutex.Unlock()
+	})
+
+	r.Put("/timer_disable", func(w http.ResponseWriter, r *http.Request) {
+		i.timerDisabledMutex.Lock()
+		i.timerDisabled = true
+		i.timerDisabledMutex.Unlock()
+	})
+
 	addr := fmt.Sprintf(":%d", i.httpPort)
 	i.logger.Printf("HTTP server listening at %s\n", addr)
 	http.ListenAndServe(addr, r)

@@ -49,6 +49,10 @@
 
     <div id="control-form" hidden>
       <div>
+        <button id="enable-timers-btn">ENABLE TIMERS</button>
+        <button id="disable-timers-btn">DISABLE TIMERS</button>
+      </div>
+      <div>
         Nó selecionado:
         <input id="node-id" value="1">
         <button id="sync-crdt-btn">SYNC</button>
@@ -57,14 +61,14 @@
       </div>
 
       <div>
-        <input id="table-name" placeholder="Table">
+        <input id="table-name" placeholder="table_name">
         <button id="create-table-btn">Criar Tabela</button>
         <button id="delete-table-btn">Deletar Tabela</button>
       </div>
 
       <div>
-        <input id="doc-id" placeholder="Document ID">
-        <input id="doc-value" placeholder="Valor">
+        <input id="doc-id" placeholder="doc_id">
+        <input id="doc-value" placeholder="{&quot;campo_a&quot;: &quot;valor_a&quot;}">
         <button id="put-doc-btn">PUT</button>
         <button id="patch-doc-btn">PATCH</button>
         <button id="delete-doc-btn">DELETE</button>
@@ -112,7 +116,7 @@
       document.getElementById('connect-btn').addEventListener('click', () => {
         const numNodes = parseInt(document.getElementById('num-nodes').value);
 
-        document.getElementById('connect-form').remove();
+        document.getElementById('connect-form').hidden = true;
         document.getElementById('control-form').hidden = false;
 
         for (let i = 1; i < (1+numNodes); i++) {
@@ -123,6 +127,20 @@
 
         for (let i = 1; i < (1+numNodes); i++) {
           connectWebSocket(i);
+        }
+      });
+
+      document.getElementById('enable-timers-btn').addEventListener('click', () => {
+        const numNodes = parseInt(document.getElementById('num-nodes').value);
+        for (let i = 1; i < (1+numNodes); i++) {
+          sendHTTPMessage(i, 'PUT', '/timer_enable', null).catch(console.error);
+        }
+      });
+
+      document.getElementById('disable-timers-btn').addEventListener('click', () => {
+        const numNodes = parseInt(document.getElementById('num-nodes').value);
+        for (let i = 1; i < (1+numNodes); i++) {
+          sendHTTPMessage(i, 'PUT', '/timer_disable', null).catch(console.error);
         }
       });
 
