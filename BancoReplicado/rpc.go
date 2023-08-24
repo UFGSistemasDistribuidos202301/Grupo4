@@ -47,10 +47,7 @@ func (i *Instance) MergeCRDTStates(
 				return err
 			}
 
-			doc, err := table.Get(tx, state.DocId)
-			if err != nil {
-				return err
-			}
+			doc, _ := table.Get(tx, state.DocId)
 
 			// Send event
 			i.visEventsChannel <- VisEvent{
