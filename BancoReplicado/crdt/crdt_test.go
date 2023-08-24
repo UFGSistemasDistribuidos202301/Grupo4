@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"testing"
+	"time"
 )
 
 func stringTwoWayMerge(str1, str2 MergeableString, callback func(merged MergeableString)) {
@@ -96,6 +97,39 @@ func TestMapBasic(t *testing.T) {
 	})
 }
 
+func TestDelete(t *testing.T) {
+	m1 := NewMergeableMap(1)
+	m2 := NewMergeableMap(2)
+
+	m1 = m1.Put("key1", "value1")
+
+	m2 = m2.Merge(m1)
+	if _, ok := m2.Get("key1"); !ok {
+		t.Error("Expected 'key1' to exist")
+	}
+
+	time.Sleep(20 * time.Millisecond)
+
+	m2 = m2.Remove("key1")
+	if _, ok := m2.Get("key1"); ok {
+		t.Error("Expected 'key1' to be deleted")
+	}
+
+	time.Sleep(20 * time.Millisecond)
+
+	m1 = m1.Put("key1", "value2")
+	if _, ok := m1.Get("key1"); !ok {
+		t.Error("Expected 'key1' to exist")
+	}
+
+	time.Sleep(20 * time.Millisecond)
+
+	m2 = m2.Merge(m1)
+	if _, ok := m2.Get("key1"); !ok {
+		t.Error("Expected 'key1' to exist")
+	}
+}
+
 func TestMapFuzz(t *testing.T) {
 	const N = 1000
 	added := make(map[string]bool)
@@ -125,6 +159,10 @@ func TestMapFuzz(t *testing.T) {
 	}
 
 	maps := []MergeableMap{generate(1), generate(2), generate(3)}
+	for i := 0; i < len(maps); i++ {
+		maps[i] = remove(maps[i])
+	}
+
 	for i := 0; i < len(maps); i++ {
 		maps[i] = remove(maps[i])
 	}

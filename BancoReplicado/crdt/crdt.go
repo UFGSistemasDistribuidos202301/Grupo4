@@ -49,12 +49,7 @@ func (p1 HLC) Cmp(p2 HLC) int {
 }
 
 func (local HLC) Merge(remote HLC) HLC {
-	now := time.Now().UnixNano()
-	if now > local.Timestamp && now > remote.Timestamp {
-		local.Timestamp = now
-		local.Counter = 0
-		return local
-	} else if local.Timestamp == remote.Timestamp {
+	if local.Timestamp == remote.Timestamp {
 		local.Counter = maxInt(local.Counter, remote.Counter) + 1
 		return local
 	} else if local.Timestamp > remote.Timestamp {
@@ -217,17 +212,24 @@ func (m MergeableMap) Merge(other MergeableMap) MergeableMap {
 		if _, ok := allTombstones[key]; !ok {
 			// There are no tombstones for this item, so we can add it
 			elements[key] = winner
-		} else if winner.Point.Cmp(allTombstones[key]) >= 0 {
-			// The winner is newer than the tombstone, so we remove the tombstone and add the winner
-			delete(allTombstones, key)
-			elements[key] = winner
+		} else {
+			if winner.Point.Cmp(allTombstones[key]) >= 0 {
+				// The winner is newer than the tombstone, so we remove the tombstone and add the winner
+				delete(allTombstones, key)
+				elements[key] = winner
+			}
 		}
 	}
 
+	allKeys := map[string]bool{}
 	for key := range m.Map {
-		iter(key)
+		allKeys[key] = true
 	}
 	for key := range other.Map {
+		allKeys[key] = true
+	}
+
+	for key := range allKeys {
 		iter(key)
 	}
 
@@ -246,23 +248,32 @@ func (m MergeableMap) Merge(other MergeableMap) MergeableMap {
 
 func mergeTombstones(ts1 map[string]HLC, ts2 map[string]HLC) map[string]HLC {
 	iter := func(key string) HLC {
-		p1 := NullHLC()
-		if p, ok := ts1[key]; ok {
-			p1 = p
+		p1, ok1 := ts1[key]
+		p2, ok2 := ts2[key]
+
+		if !ok1 && !ok2 {
+			panic("this should never happen")
 		}
-		p2 := NullHLC()
-		if p, ok := ts2[key]; ok {
-			p2 = p
+		
+		if ok1 && ok2 {
+			return p1.Merge(p2)
+		} else if ok1 {
+			return p1
+		} else {
+			return p2
 		}
-		return p1.Merge(p2)
+	}
+
+	allKeys := map[string]bool{}
+	for key := range ts1 {
+		allKeys[key] = true
+	}
+	for key := range ts2 {
+		allKeys[key] = true
 	}
 
 	mergedTombstones := map[string]HLC{}
-	for key := range ts1 {
-		latestPoint := iter(key)
-		mergedTombstones[key] = latestPoint
-	}
-	for key := range ts2 {
+	for key := range allKeys {
 		latestPoint := iter(key)
 		mergedTombstones[key] = latestPoint
 	}
