@@ -354,18 +354,32 @@ func (i *Instance) syncPendingCRDTStatesWithNode(nodeID uint) {
 		return
 	}
 
+	i.logger.Printf("Sending CRDT merge request to node %d...\n", nodeID)
 	i.flushPendingCRDTStatesForNode(nodeID)
-
 	ctx := context.Background()
 
-	req := &pb.MergeCRDTStatesRequest{
-		Documents: pendingStates,
-	}
-
 	rpcClient := i.rpcClients[nodeID]
-	_, err := rpcClient.MergeCRDTStates(ctx, req)
+	_, err := rpcClient.MergeCRDTStates(ctx, &pb.MergeCRDTStatesRequest{
+		Documents: pendingStates,
+	})
 	if err != nil {
-		i.logger.Printf("Failed to send CRDT merge request to node %d: %s (pending states = %d)\n", nodeID, err.Error(), len(pendingStates))
+		i.logger.Printf(
+			"Failed to send CRDT merge request to node %d: %s (pending states = %d)\n",
+			nodeID,
+			err.Error(),
+			len(pendingStates),
+		)
+
+		_, err = i.QueuePendingCRDTStates(
+			ctx,
+			&pb.QueuePendingCRDTStatesRequest{
+				DestNodeID: uint64(nodeID),
+				Documents:  pendingStates,
+			},
+		)
+		if err != nil {
+			i.logger.Printf("Failed to queue CRDT states for retry for node %d at node %d: %s\n", nodeID, i.nodeID, err.Error())
+		}
 
 		retries := []*pb.DocumentCRDTState{}
 		for _, state := range pendingStates {
@@ -375,17 +389,20 @@ func (i *Instance) syncPendingCRDTStatesWithNode(nodeID uint) {
 			}
 		}
 
-		for j := *baseNodeID; j < *baseNodeID+*nodeCount; j++ {
-			if j == i.nodeID {
-				i.QueuePendingCRDTStates(ctx, &pb.QueuePendingCRDTStatesRequest{
-					DestNodeID: uint64(nodeID),
-					Documents:  retries,
-				})
-			} else {
-				i.rpcClients[j].QueuePendingCRDTStates(ctx, &pb.QueuePendingCRDTStatesRequest{
-					DestNodeID: uint64(nodeID),
-					Documents:  retries,
-				})
+		if len(retries) > 0 {
+			for j := *baseNodeID; j < *baseNodeID+*nodeCount; j++ {
+				if j != i.nodeID {
+					_, err = i.rpcClients[j].QueuePendingCRDTStates(
+						ctx,
+						&pb.QueuePendingCRDTStatesRequest{
+							DestNodeID: uint64(nodeID),
+							Documents:  retries,
+						},
+					)
+					if err != nil {
+						i.logger.Printf("Failed to queue CRDT states for retry for node %d: %s\n", nodeID, err.Error())
+					}
+				}
 			}
 		}
 	} else {

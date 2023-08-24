@@ -3,7 +3,7 @@ all:
 
 run:
 	mkdir -p nodes
-	go run . -nodeCount 10
+	go run . -nodeCount 4
 
 proto:
 	protoc --go_out=./pb --go_opt=paths=source_relative \

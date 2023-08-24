@@ -86,13 +86,16 @@ func (i *Instance) QueuePendingCRDTStates(
 			if err != nil {
 				return err
 			}
-			bucket.Put(k, []byte{})
+			err = bucket.Put(k, []byte{})
+			if err != nil {
+				return err
+			}
 		}
 
 		return nil
 	})
 	if err != nil {
-		i.logger.Printf("Failed to get pending CRDT states: %s\n", err.Error())
+		i.logger.Printf("Failed to queue pending CRDT states: %s\n", err.Error())
 		return nil, err
 	}
 

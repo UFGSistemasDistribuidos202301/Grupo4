@@ -17,6 +17,23 @@ var (
 	baseRPCPort  = flag.Uint("baseRPCPort", 8000, "The base RPC port")
 	baseNodeID   = flag.Uint("baseNodeID", 1, "The base node ID")
 	nodeCount    = flag.Uint("nodeCount", 10, "The number of nodes in total")
+
+	colors = []string{
+		"\033[31m",
+		"\033[32m",
+		"\033[33m",
+		"\033[34m",
+		"\033[35m",
+		"\033[36m",
+		"\033[37m",
+		"\033[91m",
+		"\033[92m",
+		"\033[93m",
+		"\033[94m",
+		"\033[95m",
+		"\033[96m",
+		"\033[97m",
+	}
 )
 
 type Instance struct {
@@ -46,17 +63,17 @@ type Instance struct {
 	// Offline simulation
 	offlineMutex sync.RWMutex
 	offline      bool
-
 }
 
 func RunInstance(nodeID uint) {
+	color := colors[(int(nodeID)-1)%len(colors)]
 	instance := Instance{
 		nodeID:   nodeID,
 		httpPort: *baseHTTPPort + nodeID,
 		rpcPort:  *baseRPCPort + nodeID,
-		logger:   log.New(os.Stdout, fmt.Sprintf("[NODE #%d] ", nodeID), log.LstdFlags),
+		logger:   log.New(os.Stdout, fmt.Sprintf("%s[NODE #%d] ", color, nodeID), log.LstdFlags),
 
-		rpcClients:        make(map[uint]pb.DatabaseClient),
+		rpcClients: make(map[uint]pb.DatabaseClient),
 
 		wsListeners:      make(map[*websocket.Conn]chan<- VisEvent),
 		visEventsChannel: make(chan VisEvent),
